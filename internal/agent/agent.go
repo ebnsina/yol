@@ -29,6 +29,8 @@ const Version = "0.1.0"
 const (
 	credentialFile = "credential"
 	enrollmentFile = "enrollment"
+	publicKeyFile  = "spec.pub"
+	specFile       = "spec.json"
 )
 
 // Reconnect timing. A server that has been unreachable for a while should not hammer the
@@ -46,6 +48,12 @@ type Agent struct {
 
 	collector Collector
 	tails     *tails
+	verifier  *proto.Verifier
+
+	// The specification currently held, guarded because reconciliation and the connection
+	// read it from different goroutines.
+	specMu sync.RWMutex
+	spec   *proto.Spec
 
 	// The active connection, guarded because log streams write from their own goroutines.
 	writeMu sync.Mutex
@@ -78,6 +86,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 	a.token = token
+
+	a.loadVerifier()
+
+	// Whatever was last applied is applied again before the control plane is reached, so a
+	// server that rebooted comes back on its own rather than waiting for us.
+	if spec, _, err := a.loadSpec(); err == nil {
+		a.setSpec(spec)
+		slog.Info("restored the specification from disk", "version", spec.Version)
+	}
+
+	go a.reconcileLoop(ctx)
 
 	backoff := minBackoff
 	for {
@@ -369,8 +388,7 @@ func (a *Agent) handle(ctx context.Context, data []byte) {
 			a.refuse(ctx)
 			return
 		}
-		// Applying a specification arrives with reconciliation.
-		slog.Debug("ignoring instruction this build cannot yet act on", "type", envelope.Type)
+		a.acceptSpec(ctx, envelope)
 
 	default:
 		// Unknown types are ignored so a newer control plane does not break an older agent.
@@ -408,11 +426,44 @@ func (a *Agent) refuse(ctx context.Context) {
 	_ = a.sendRaw(ctx, encoded)
 }
 
-// specVersion is what the agent currently has on disk, so the control plane can skip sending
-// an unchanged one.
+// specVersion is what the agent currently holds, so the control plane can skip resending an
+// unchanged specification.
 func (a *Agent) specVersion() int64 {
-	// Reconciliation arrives next; until then there is nothing applied.
-	return 0
+	a.specMu.RLock()
+	defer a.specMu.RUnlock()
+
+	if a.spec == nil {
+		return 0
+	}
+	return a.spec.Version
+}
+
+func (a *Agent) currentSpec() *proto.Spec {
+	a.specMu.RLock()
+	defer a.specMu.RUnlock()
+	return a.spec
+}
+
+func (a *Agent) setSpec(spec *proto.Spec) {
+	a.specMu.Lock()
+	defer a.specMu.Unlock()
+	a.spec = spec
+}
+
+// loadVerifier reads the public key written during setup. Without it no specification can be
+// checked, and an unchecked specification is never applied.
+func (a *Agent) loadVerifier() {
+	encoded, err := a.readFile(publicKeyFile)
+	if err != nil || encoded == "" {
+		slog.Warn("no public key on this server, so no instruction to change it can be checked")
+		return
+	}
+	verifier, err := proto.NewVerifier(encoded)
+	if err != nil {
+		slog.Error("the public key on this server could not be read", "error", err)
+		return
+	}
+	a.verifier = verifier
 }
 
 func interval(seconds int, fallback time.Duration) time.Duration {

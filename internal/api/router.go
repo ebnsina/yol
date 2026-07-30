@@ -9,6 +9,7 @@ import (
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/org"
+	"github.com/ebnsina/yol/internal/proto"
 	"github.com/ebnsina/yol/internal/server"
 )
 
@@ -19,6 +20,7 @@ type Deps struct {
 	Servers *server.Service
 	Hub     *server.Hub
 	Streams *server.Streams
+	Signer  *proto.SigningKey
 }
 
 // New builds the API handler with logging, panic recovery, and the error envelope.
@@ -38,7 +40,7 @@ func New(d Deps) http.Handler {
 	server.NewHandler(d.Servers, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
 
 	// Agents authenticate with their own credential rather than a person's session.
-	server.NewAgentHandler(d.Servers, d.Hub, d.Streams).Routes(mux)
+	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer).Routes(mux)
 
 	return httpx.Chain(mux,
 		httpx.WithRequestID,

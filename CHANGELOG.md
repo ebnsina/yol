@@ -134,6 +134,15 @@ All notable changes to this project are recorded here, newest first. Format foll
   leaving a server apparently being set up forever.
 - Nothing is installed until the server has been looked at and setup explicitly asked for, so
   connecting a server and changing it stay separate decisions.
+- The agent now keeps a server matching what it has been told to run. It corrects the machine on
+  a schedule as well as when told, so a container that stopped, or a reboot, is put right without
+  anyone asking. What it was last told is kept on disk, so a server that reboots recovers before
+  the control plane has even been reached.
+- A router is now run on servers where we handle web traffic, which is the first thing this
+  platform runs on a customer's machine. It is given a memory limit, as everything we run is, so
+  one container cannot take a whole server down.
+- Where a customer's own web server keeps ports 80 and 443, no router is run and their sites are
+  left entirely alone.
 
 ### Security
 
@@ -148,6 +157,16 @@ All notable changes to this project are recorded here, newest first. Format foll
   password, resolving a session token, and signing out — each go through one narrow
   `SECURITY DEFINER` function rather than relaxing any policy. Each is authorized by
   presenting a secret and returns at most one row.
+- Instructions to change a server are signed by the control plane and checked by the agent, so
+  reaching the connection is not the same as being allowed to run containers on someone's
+  machine. The signature is asymmetric: servers hold only the public half, so a compromised
+  machine cannot forge instructions for any other.
+- What the agent keeps on disk is stored with its signature and checked again when reloaded,
+  rather than trusted because it came from our own files.
+- Removal only ever considers containers this platform owns, recognised by our label or named as
+  adopted in the instruction. A customer's containers are not merely spared, they are absent from
+  the list the removal step reads. Proven on a real server: a container carrying our label was
+  removed while three of theirs, and their volume, were untouched.
 - Watch-only is decided by the agent, and only an explicit instruction that a server is managed
   permits a change. An agent that has not been told its mode, or fails to learn it, can change
   nothing rather than everything.

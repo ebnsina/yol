@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ebnsina/yol/internal/db/sqlc"
+	"github.com/ebnsina/yol/internal/proto"
 	"github.com/ebnsina/yol/internal/ssh"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -37,13 +38,17 @@ func (BootstrapArgs) Kind() string { return "server.bootstrap" }
 type Bootstrapper struct {
 	svc          *Service
 	hub          *Hub
+	signer       *proto.SigningKey
 	agentBinDir  string
 	controlPlane string
 }
 
 // NewBootstrapper builds the setup worker.
-func NewBootstrapper(svc *Service, hub *Hub, agentBinDir, controlPlaneURL string) *Bootstrapper {
-	return &Bootstrapper{svc: svc, hub: hub, agentBinDir: agentBinDir, controlPlane: controlPlaneURL}
+func NewBootstrapper(svc *Service, hub *Hub, signer *proto.SigningKey, agentBinDir, controlPlaneURL string) *Bootstrapper {
+	return &Bootstrapper{
+		svc: svc, hub: hub, signer: signer,
+		agentBinDir: agentBinDir, controlPlane: controlPlaneURL,
+	}
 }
 
 // How long to wait for the agent to appear before saying something is wrong.
@@ -141,6 +146,13 @@ func (b *Bootstrapper) install(ctx context.Context, args BootstrapArgs, client *
 	}
 	// Readable by its owner alone, and consumed by the agent the first time it starts.
 	if err := client.WriteText(ctx, filepath.Join(agentStateDir, "enrollment"), "600", token); err != nil {
+		return err
+	}
+
+	// The public half of the signing key, so the agent can check that an instruction to change
+	// this server really came from us. Not a secret, so it is world readable.
+	if err := client.WriteText(ctx, filepath.Join(agentStateDir, "spec.pub"), "644",
+		b.signer.PublicKey()); err != nil {
 		return err
 	}
 

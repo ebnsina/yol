@@ -11,6 +11,7 @@ import (
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/jobs"
+	"github.com/ebnsina/yol/internal/proto"
 	"github.com/ebnsina/yol/internal/secrets"
 	"github.com/ebnsina/yol/internal/server"
 )
@@ -38,6 +39,14 @@ func main() {
 	defer hub.CloseAll()
 	streams := server.NewStreams()
 
+	// Specifications are signed so an agent can tell an instruction from us apart from one
+	// that merely reached its connection.
+	signer, err := proto.NewSigningKey(cfg.AgentSpecKey)
+	if err != nil {
+		slog.Error("cannot set up specification signing", "error", err)
+		os.Exit(1)
+	}
+
 	servers := server.NewService(pool, box)
 
 	// Workers are registered before the runner starts, so nothing is picked up that this
@@ -45,7 +54,7 @@ func main() {
 	workers := jobs.NewWorkers()
 	server.RegisterWorkers(workers,
 		server.NewSurveyor(servers),
-		server.NewBootstrapper(servers, hub, cfg.AgentDir, cfg.PublicURL.String()),
+		server.NewBootstrapper(servers, hub, signer, cfg.AgentDir, cfg.PublicURL.String()),
 	)
 
 	runner, err := jobs.New(pool.Raw(), workers)
@@ -72,6 +81,7 @@ func main() {
 		Servers: servers,
 		Hub:     hub,
 		Streams: streams,
+		Signer:  signer,
 	})
 
 	if err := httpx.Serve(ctx, cfg.HTTPAddr, handler, cfg.ShutdownTimeout); err != nil {

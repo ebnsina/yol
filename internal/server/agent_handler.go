@@ -19,11 +19,12 @@ type AgentHandler struct {
 	svc     *Service
 	hub     *Hub
 	streams *Streams
+	signer  *proto.SigningKey
 }
 
 // NewAgentHandler builds the agent endpoints.
-func NewAgentHandler(svc *Service, hub *Hub, streams *Streams) *AgentHandler {
-	return &AgentHandler{svc: svc, hub: hub, streams: streams}
+func NewAgentHandler(svc *Service, hub *Hub, streams *Streams, signer *proto.SigningKey) *AgentHandler {
+	return &AgentHandler{svc: svc, hub: hub, streams: streams, signer: signer}
 }
 
 // Routes registers the agent endpoints.
@@ -124,6 +125,12 @@ func (h *AgentHandler) serve(ctx context.Context, conn *websocket.Conn, identity
 	}
 	h.svc.recordAgentEvent(ctx, identity, "agent", "The agent connected and this server is now online.", "info")
 
+	// Sent on every connection rather than only on change, so an agent that missed one while
+	// disconnected does not need us to remember that it did.
+	if err := h.svc.SendSpec(ctx, connection, h.signer); err != nil {
+		slog.Error("could not send the specification", "serverId", identity.ServerID, "error", err)
+	}
+
 	h.readLoop(ctx, connection)
 
 	slog.Info("agent disconnected", "serverId", identity.ServerID)
@@ -203,6 +210,13 @@ func (h *AgentHandler) handle(ctx context.Context, c *Connection, envelope *prot
 		if err := h.svc.RecordInventory(ctx, c.Identity, inventory); err != nil {
 			slog.Error("could not record inventory", "serverId", c.Identity.ServerID, "error", err)
 		}
+
+	case proto.TypeApplied:
+		var applied proto.Applied
+		if err := envelope.Into(&applied); err != nil {
+			return
+		}
+		h.svc.RecordApplied(ctx, c.Identity, applied)
 
 	case proto.TypeLogChunk:
 		var chunk proto.LogChunk
