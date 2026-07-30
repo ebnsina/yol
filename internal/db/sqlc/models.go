@@ -13,6 +13,52 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DeploymentStatus string
+
+const (
+	DeploymentStatusQueued     DeploymentStatus = "queued"
+	DeploymentStatusBuilding   DeploymentStatus = "building"
+	DeploymentStatusDeploying  DeploymentStatus = "deploying"
+	DeploymentStatusLive       DeploymentStatus = "live"
+	DeploymentStatusFailed     DeploymentStatus = "failed"
+	DeploymentStatusSuperseded DeploymentStatus = "superseded"
+)
+
+func (e *DeploymentStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DeploymentStatus(s)
+	case string:
+		*e = DeploymentStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DeploymentStatus: %T", src)
+	}
+	return nil
+}
+
+type NullDeploymentStatus struct {
+	DeploymentStatus DeploymentStatus
+	Valid            bool // Valid is true if DeploymentStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDeploymentStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.DeploymentStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DeploymentStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDeploymentStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DeploymentStatus), nil
+}
+
 type DiscoveredKind string
 
 const (
@@ -234,6 +280,54 @@ func (ns NullServerStatus) Value() (driver.Value, error) {
 	return string(ns.ServerStatus), nil
 }
 
+type ServiceKind string
+
+const (
+	ServiceKindApp        ServiceKind = "app"
+	ServiceKindPostgres   ServiceKind = "postgres"
+	ServiceKindMysql      ServiceKind = "mysql"
+	ServiceKindRedis      ServiceKind = "redis"
+	ServiceKindClickhouse ServiceKind = "clickhouse"
+	ServiceKindSqlite     ServiceKind = "sqlite"
+	ServiceKindSrs        ServiceKind = "srs"
+	ServiceKindMediamtx   ServiceKind = "mediamtx"
+)
+
+func (e *ServiceKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ServiceKind(s)
+	case string:
+		*e = ServiceKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ServiceKind: %T", src)
+	}
+	return nil
+}
+
+type NullServiceKind struct {
+	ServiceKind ServiceKind
+	Valid       bool // Valid is true if ServiceKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullServiceKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.ServiceKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ServiceKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullServiceKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ServiceKind), nil
+}
+
 type AuditLog struct {
 	ID          uuid.UUID
 	OrgID       *uuid.UUID
@@ -244,6 +338,30 @@ type AuditLog struct {
 	Metadata    []byte
 	Ip          *netip.Addr
 	CreatedAt   pgtype.Timestamptz
+}
+
+type Deployment struct {
+	ID                   uuid.UUID
+	OrgID                uuid.UUID
+	ServiceID            uuid.UUID
+	Status               DeploymentStatus
+	CommitSha            *string
+	CommitRef            *string
+	ImageRef             *string
+	FailureReason        *string
+	ReplacedDeploymentID *uuid.UUID
+	CreatedAt            pgtype.Timestamptz
+	StartedAt            pgtype.Timestamptz
+	FinishedAt           pgtype.Timestamptz
+}
+
+type DeploymentLog struct {
+	ID           uuid.UUID
+	OrgID        uuid.UUID
+	DeploymentID uuid.UUID
+	Stream       string
+	Text         string
+	At           pgtype.Timestamptz
 }
 
 type DiscoveredResource struct {
@@ -264,6 +382,37 @@ type DiscoveredResource struct {
 	Details                   []byte
 	FirstSeenAt               pgtype.Timestamptz
 	LastSeenAt                pgtype.Timestamptz
+}
+
+type Domain struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	ServiceID  uuid.UUID
+	Hostname   string
+	Ours       bool
+	VerifiedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type EnvVar struct {
+	ID        uuid.UUID
+	OrgID     uuid.UUID
+	EnvID     uuid.UUID
+	Name      string
+	Value     []byte
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type Environment struct {
+	ID        uuid.UUID
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+	ServerID  *uuid.UUID
+	Name      string
+	Branch    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 type Invitation struct {
@@ -293,6 +442,38 @@ type Organization struct {
 	Slug      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type Placement struct {
+	ID            uuid.UUID
+	OrgID         uuid.UUID
+	DeploymentID  uuid.UUID
+	ServerID      uuid.UUID
+	ContainerName string
+	CreatedAt     pgtype.Timestamptz
+}
+
+type PortAllocation struct {
+	ID        uuid.UUID
+	OrgID     uuid.UUID
+	ServerID  uuid.UUID
+	Port      int32
+	ServiceID *uuid.UUID
+	Purpose   string
+	CreatedAt pgtype.Timestamptz
+}
+
+type Project struct {
+	ID                 uuid.UUID
+	OrgID              uuid.UUID
+	Name               string
+	Slug               string
+	RepoProvider       *string
+	RepoFullName       *string
+	RepoExternalID     *string
+	RepoInstallationID *string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type Server struct {
@@ -332,6 +513,19 @@ type ServerEvent struct {
 	Message   string
 	Level     string
 	CreatedAt pgtype.Timestamptz
+}
+
+type Service struct {
+	ID               uuid.UUID
+	OrgID            uuid.UUID
+	EnvID            uuid.UUID
+	Name             string
+	Kind             ServiceKind
+	HealthPath       *string
+	HealthPort       *int32
+	MemoryLimitBytes int64
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 type Session struct {

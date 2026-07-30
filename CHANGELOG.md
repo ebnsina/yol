@@ -147,6 +147,14 @@ All notable changes to this project are recorded here, newest first. Format foll
   machines: that looking changes nothing, that their work survives, that only what we created is
   ever removed, that logs stream from containers we did not create, and that a watched server has
   nothing created on it at all. Run with `make verify-phase1`.
+- Projects, with an environment for each running copy — production, staging, or any name — each
+  pointed at a server, which may be the same one or a different one. Environment variables are
+  encrypted, and their values are never returned once set.
+- Deployments keep the image they built, so rolling back reuses it rather than building again.
+  Only one deployment is live for a service at a time, which the database itself enforces.
+- Where a deployment runs is a row rather than a column, so a service spanning several machines
+  later is an addition rather than a change.
+- Host ports are allocated by the control plane, so two projects on one server cannot collide.
 
 ### Security
 
