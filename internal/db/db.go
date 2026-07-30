@@ -62,6 +62,10 @@ func (p *Pool) verifyRole(ctx context.Context) error {
 // Close releases every connection.
 func (p *Pool) Close() { p.pool.Close() }
 
+// Raw exposes the underlying pool for libraries that need one, such as the job runner.
+// Prefer the scoped helpers above for anything touching tenant data.
+func (p *Pool) Raw() *pgxpool.Pool { return p.pool }
+
 // Ping reports whether the database is reachable.
 func (p *Pool) Ping(ctx context.Context) error { return p.pool.Ping(ctx) }
 

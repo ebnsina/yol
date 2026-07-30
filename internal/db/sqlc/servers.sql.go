@@ -138,17 +138,18 @@ func (q *Queries) DeleteServer(ctx context.Context, arg DeleteServerParams) erro
 
 const deleteStaleDiscoveredResources = `-- name: DeleteStaleDiscoveredResources :execrows
 DELETE FROM discovered_resources
-WHERE server_id = $1 AND last_seen_at < $2 AND adopted_at IS NULL
+WHERE server_id = $1 AND last_seen_at < now() AND adopted_at IS NULL
 `
 
-type DeleteStaleDiscoveredResourcesParams struct {
-	ServerID   uuid.UUID
-	LastSeenAt pgtype.Timestamptz
-}
-
 // Anything not seen in the latest report has gone from the machine.
-func (q *Queries) DeleteStaleDiscoveredResources(ctx context.Context, arg DeleteStaleDiscoveredResourcesParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteStaleDiscoveredResources, arg.ServerID, arg.LastSeenAt)
+//
+// The cutoff is the database's own now(), which inside a transaction is the moment that
+// transaction began. Rows written by this same pass carry exactly that value and so are not
+// less than it, while rows from an earlier pass are strictly older. Comparing against a
+// timestamp taken in the application instead would depend on two clocks agreeing, and a
+// database running even slightly behind would delete everything just recorded.
+func (q *Queries) DeleteStaleDiscoveredResources(ctx context.Context, serverID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteStaleDiscoveredResources, serverID)
 	if err != nil {
 		return 0, err
 	}

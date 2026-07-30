@@ -97,6 +97,15 @@ All notable changes to this project are recorded here, newest first. Format foll
   nature. Nothing found this way is ever acted on automatically.
 - Only Ubuntu and Debian are accepted for now, and an unsupported server is told so plainly
   rather than half-working.
+- Connecting a server from the API: it is recorded, then looked at in the background, with
+  progress written step by step in plain language so a wait of minutes shows what is happening
+  rather than a spinner. Everything found is stored and can be listed, ours and theirs alike.
+- A server whose ports 80 and 443 are already taken stops and waits for a decision instead of
+  assuming one. A server being watched only finishes at the survey, with nothing installed.
+- Background work runs through a durable queue, so a control plane restart does not lose a
+  half-finished setup. Job records hold identifiers only and never credentials.
+- Disconnecting a server forgets it here and changes nothing on the machine, so leaving costs
+  a customer nothing they were running.
 
 ### Security
 

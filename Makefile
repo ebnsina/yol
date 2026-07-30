@@ -73,6 +73,7 @@ vps-status: ## Show what each stand-in server is running
 .PHONY: migrate-up
 migrate-up: ## Apply all migrations
 	goose -dir $(MIGRATIONS) postgres "$(DB_URL)" up
+	@YOL_OWNER_DATABASE_URL="$(DB_URL)" go run ./cmd/jobsmigrate
 
 .PHONY: migrate-down
 migrate-down: ## Roll back the last migration

@@ -74,9 +74,15 @@ WHERE server_id = $1
 ORDER BY kind, name;
 
 -- Anything not seen in the latest report has gone from the machine.
+--
+-- The cutoff is the database's own now(), which inside a transaction is the moment that
+-- transaction began. Rows written by this same pass carry exactly that value and so are not
+-- less than it, while rows from an earlier pass are strictly older. Comparing against a
+-- timestamp taken in the application instead would depend on two clocks agreeing, and a
+-- database running even slightly behind would delete everything just recorded.
 -- name: DeleteStaleDiscoveredResources :execrows
 DELETE FROM discovered_resources
-WHERE server_id = $1 AND last_seen_at < $2 AND adopted_at IS NULL;
+WHERE server_id = $1 AND last_seen_at < now() AND adopted_at IS NULL;
 
 -- name: AdoptDiscoveredResource :one
 UPDATE discovered_resources

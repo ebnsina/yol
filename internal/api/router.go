@@ -9,12 +9,16 @@ import (
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/org"
+	"github.com/ebnsina/yol/internal/secrets"
+	"github.com/ebnsina/yol/internal/server"
 )
 
 // Deps holds everything the routes need. Fields are added as domains land.
 type Deps struct {
-	Config *config.API
-	DB     *db.Pool
+	Config   *config.API
+	DB       *db.Pool
+	Secrets  *secrets.Box
+	Enqueuer server.Enqueuer
 }
 
 // New builds the API handler with logging, panic recovery, and the error envelope.
@@ -28,7 +32,11 @@ func New(d Deps) http.Handler {
 	authHandler := auth.NewHandler(authSvc, d.Config)
 	authHandler.Routes(mux)
 
-	org.NewHandler(org.NewService(d.DB), d.Config, authHandler.Required, authHandler.Optional).Routes(mux)
+	orgSvc := org.NewService(d.DB)
+	org.NewHandler(orgSvc, d.Config, authHandler.Required, authHandler.Optional).Routes(mux)
+
+	serverSvc := server.NewService(d.DB, d.Secrets, d.Enqueuer)
+	server.NewHandler(serverSvc, orgSvc, authHandler.Required).Routes(mux)
 
 	return httpx.Chain(mux,
 		httpx.WithRequestID,
