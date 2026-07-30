@@ -4,6 +4,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/ebnsina/yol/internal/auth"
 	"github.com/ebnsina/yol/internal/config"
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
@@ -22,10 +23,14 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("GET /ready", readyHandler(d.DB))
 
+	authSvc := auth.NewService(d.DB, d.Config)
+	auth.NewHandler(authSvc, d.Config).Routes(mux)
+
 	return httpx.Chain(mux,
 		httpx.WithRequestID,
 		httpx.LogRequests,
 		httpx.Recover,
+		httpx.CORS(d.Config.WebOrigin.String()),
 	)
 }
 

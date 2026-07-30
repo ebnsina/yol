@@ -57,7 +57,10 @@ func seedOrg(t *testing.T, p *Pool) (orgID, userID uuid.UUID) {
 
 	t.Cleanup(func() {
 		_ = p.Unscoped(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, orgID)
+			if _, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, orgID); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 			return err
 		})
 	})

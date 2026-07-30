@@ -17,10 +17,13 @@ type API struct {
 	Env             Environment
 	HTTPAddr        string
 	PublicURL       *url.URL
+	WebOrigin       *url.URL
+	CookieDomain    string
 	DatabaseURL     string
 	SessionSecret   []byte
 	SecretsKey      []byte
 	AgentSpecKey    []byte
+	SessionTTL      time.Duration
 	ShutdownTimeout time.Duration
 }
 
@@ -51,10 +54,13 @@ func LoadAPI() (*API, error) {
 		Env:             Environment(l.enum("YOL_ENV", string(EnvDevelopment), string(EnvStaging), string(EnvProduction))),
 		HTTPAddr:        l.str("YOL_HTTP_ADDR"),
 		PublicURL:       l.url("YOL_PUBLIC_URL"),
+		WebOrigin:       l.url("YOL_WEB_ORIGIN"),
+		CookieDomain:    l.str("YOL_COOKIE_DOMAIN"),
 		DatabaseURL:     l.str("YOL_DATABASE_URL"),
 		SessionSecret:   l.key("YOL_SESSION_SECRET", 32),
 		SecretsKey:      l.key("YOL_SECRETS_KEY", 32),
 		AgentSpecKey:    l.key("YOL_AGENT_SPEC_KEY", 32),
+		SessionTTL:      l.duration("YOL_SESSION_TTL"),
 		ShutdownTimeout: l.duration("YOL_SHUTDOWN_TIMEOUT"),
 	}
 	return cfg, l.err()
