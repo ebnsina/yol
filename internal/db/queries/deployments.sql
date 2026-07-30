@@ -88,7 +88,7 @@ DELETE FROM env_vars WHERE env_id = $1 AND name = $2;
 -- name: AllocatePort :one
 INSERT INTO port_allocations (id, org_id, server_id, port, service_id, purpose)
 SELECT $1, $2, $3, candidate, $4, $5
-FROM generate_series($6::int, $7::int) AS candidate
+FROM generate_series(sqlc.arg(range_start)::int, sqlc.arg(range_end)::int) AS candidate
 WHERE NOT EXISTS (
     SELECT 1 FROM port_allocations existing
     WHERE existing.server_id = $3 AND existing.port = candidate

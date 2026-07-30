@@ -155,6 +155,9 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Where a deployment runs is a row rather than a column, so a service spanning several machines
   later is an addition rather than a change.
 - Host ports are allocated by the control plane, so two projects on one server cannot collide.
+  Ports something else on the machine is already using are recorded and never handed out, asking
+  twice for the same purpose returns the same port so a retried deploy does not consume another,
+  and a full range says so plainly rather than failing obscurely.
 
 ### Security
 

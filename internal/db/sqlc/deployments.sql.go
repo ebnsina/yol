@@ -26,13 +26,13 @@ RETURNING id, org_id, server_id, port, service_id, purpose, created_at
 `
 
 type AllocatePortParams struct {
-	ID        uuid.UUID
-	OrgID     uuid.UUID
-	ServerID  uuid.UUID
-	ServiceID *uuid.UUID
-	Purpose   string
-	Column6   int32
-	Column7   int32
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	ServerID   uuid.UUID
+	ServiceID  *uuid.UUID
+	Purpose    string
+	RangeStart int32
+	RangeEnd   int32
 }
 
 // Takes the lowest free port in the range, so allocations stay compact and predictable.
@@ -43,8 +43,8 @@ func (q *Queries) AllocatePort(ctx context.Context, arg AllocatePortParams) (Por
 		arg.ServerID,
 		arg.ServiceID,
 		arg.Purpose,
-		arg.Column6,
-		arg.Column7,
+		arg.RangeStart,
+		arg.RangeEnd,
 	)
 	var i PortAllocation
 	err := row.Scan(
