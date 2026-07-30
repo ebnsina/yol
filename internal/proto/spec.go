@@ -31,6 +31,9 @@ type Spec struct {
 	Containers []SpecContainer `json:"containers"`
 	Volumes    []SpecVolume    `json:"volumes"`
 	Routes     []SpecRoute     `json:"routes"`
+	// How the router should serve traffic. Absent when this server has no router, which is the
+	// case where a customer's own web server keeps ports 80 and 443.
+	Router *SpecRouter `json:"router,omitempty"`
 	// Names of containers the user has adopted. The agent treats these as managed even
 	// though they carry no label, because a label cannot be added to an existing container.
 	Adopted []AdoptedContainer `json:"adopted,omitempty"`
@@ -70,7 +73,14 @@ type PortMapping struct {
 	HostPort      int    `json:"hostPort"`
 	ContainerPort int    `json:"containerPort"`
 	Protocol      string `json:"protocol"`
+	// Restricts which address the port is published on. Used to keep the router's control
+	// interface on loopback, where only the agent can reach it.
+	HostIP string `json:"hostIp,omitempty"`
 }
+
+// Network is the private network managed containers share, so the router can reach an app by
+// name without publishing it to the outside world at all.
+const Network = "yol"
 
 // Mount attaches a volume or host path.
 type Mount struct {
@@ -97,11 +107,20 @@ type HealthGate struct {
 	IntervalSec int    `json:"intervalSec"`
 }
 
-// SpecRoute maps a hostname to a container for the router.
+// SpecRoute maps a hostname to a container for the router. The router reaches the container by
+// name over the private network, so an app needs no port published to the outside world.
 type SpecRoute struct {
 	Host      string `json:"host"`
 	Container string `json:"container"`
 	Port      int    `json:"port"`
+}
+
+// SpecRouter is how the router is configured.
+type SpecRouter struct {
+	AdminPort int `json:"adminPort"`
+	// Where the router asks whether it may obtain a certificate for a hostname. Without this,
+	// anyone pointing a name at a customer's server could make it request certificates.
+	PermissionURL string `json:"permissionUrl"`
 }
 
 // Applied is the agent's report after a reconcile pass. Sent even when nothing changed, so

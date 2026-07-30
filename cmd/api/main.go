@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/ebnsina/yol/internal/api"
 	"github.com/ebnsina/yol/internal/config"
@@ -47,7 +48,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	servers := server.NewService(pool, box)
+	servers := server.NewService(pool, box,
+		strings.TrimSuffix(cfg.PublicURL.String(), "/")+"/v1/tls/allow")
 
 	// Workers are registered before the runner starts, so nothing is picked up that this
 	// process does not know how to do.

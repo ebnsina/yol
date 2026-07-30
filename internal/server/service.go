@@ -29,11 +29,15 @@ type Service struct {
 	pool     *db.Pool
 	box      *secrets.Box
 	enqueuer Enqueuer
+
+	// Where routers on customer servers ask whether they may obtain a certificate.
+	permissionURL string
 }
 
-// NewService builds the server service.
-func NewService(pool *db.Pool, box *secrets.Box) *Service {
-	return &Service{pool: pool, box: box}
+// NewService builds the server service. permissionURL must be an address a customer's server can
+// reach, since their router is what calls it.
+func NewService(pool *db.Pool, box *secrets.Box, permissionURL string) *Service {
+	return &Service{pool: pool, box: box, permissionURL: permissionURL}
 }
 
 // SetEnqueuer supplies the queue once it exists. The queue's workers are built from this

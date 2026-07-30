@@ -7,6 +7,7 @@ import (
 	"github.com/ebnsina/yol/internal/auth"
 	"github.com/ebnsina/yol/internal/config"
 	"github.com/ebnsina/yol/internal/db"
+	"github.com/ebnsina/yol/internal/deploy"
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/org"
 	"github.com/ebnsina/yol/internal/proto"
@@ -41,6 +42,9 @@ func New(d Deps) http.Handler {
 
 	// Agents authenticate with their own credential rather than a person's session.
 	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer).Routes(mux)
+
+	// Asked by the routers on customer servers, so it carries no session.
+	deploy.NewTLSHandler(d.DB).Routes(mux)
 
 	return httpx.Chain(mux,
 		httpx.WithRequestID,

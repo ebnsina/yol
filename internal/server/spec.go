@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/ebnsina/yol/internal/db/sqlc"
@@ -18,6 +19,10 @@ const (
 	routerContainer = "yol-router"
 	routerImage     = "caddy:2-alpine"
 	routerMemory    = 128 << 20
+
+	// RouterAdminPort is where the router takes its configuration. Published on loopback only,
+	// so nothing outside the machine can reconfigure how a customer's traffic is served.
+	RouterAdminPort = 2019
 )
 
 // SpecFor builds the desired state of one server.
@@ -52,6 +57,27 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 				Name:   routerContainer + "-data",
 				Labels: proto.ManagedLabels(identity.OrgID.String(), "", "", "", "", proto.RoleRouter),
 			})
+			spec.Router = &proto.SpecRouter{
+				AdminPort:     RouterAdminPort,
+				PermissionURL: s.permissionURL,
+			}
+
+			// Hostnames this server answers for, and where each one goes.
+			domains, err := q.ListDomainsForServer(ctx, &identity.ServerID)
+			if err != nil {
+				return err
+			}
+			for _, domain := range domains {
+				port := 80
+				if domain.HealthPort != nil {
+					port = int(*domain.HealthPort)
+				}
+				spec.Routes = append(spec.Routes, proto.SpecRoute{
+					Host:      domain.Hostname,
+					Container: containerNameFor(domain.ServiceID),
+					Port:      port,
+				})
+			}
 		}
 
 		// Containers the user asked us to manage that were already on the machine. They carry no
@@ -82,6 +108,12 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 	return spec, nil
 }
 
+// containerNameFor is how a service's container is named on a machine. Derived from the service
+// rather than stored, so the control plane and the agent cannot disagree about it.
+func containerNameFor(serviceID uuid.UUID) string {
+	return "yol-" + serviceID.String()[:12]
+}
+
 // routerFor describes the router, or nothing when this server does not need one.
 func routerFor(row sqlc.Server, orgID uuid.UUID) *proto.SpecContainer {
 	// Behind their own web server we would need ports allocated for it, which comes with
@@ -91,12 +123,17 @@ func routerFor(row sqlc.Server, orgID uuid.UUID) *proto.SpecContainer {
 	}
 
 	return &proto.SpecContainer{
-		Name:   routerContainer,
-		Image:  routerImage,
-		Labels: proto.ManagedLabels(orgID.String(), "", "", "", "", proto.RoleRouter),
+		Name:  routerContainer,
+		Image: routerImage,
+		// Listening on every address is how the control interface becomes reachable from the
+		// host at all; publishing it on loopback is what keeps it reachable only by the agent.
+		Env:     map[string]string{"CADDY_ADMIN": "0.0.0.0:" + strconv.Itoa(RouterAdminPort)},
+		Labels:  proto.ManagedLabels(orgID.String(), "", "", "", "", proto.RoleRouter),
+		Network: proto.Network,
 		Ports: []proto.PortMapping{
 			{HostPort: 80, ContainerPort: 80, Protocol: "tcp"},
 			{HostPort: 443, ContainerPort: 443, Protocol: "tcp"},
+			{HostPort: RouterAdminPort, ContainerPort: RouterAdminPort, Protocol: "tcp", HostIP: "127.0.0.1"},
 		},
 		Mounts: []proto.Mount{
 			{Source: routerContainer + "-data", Target: "/data"},

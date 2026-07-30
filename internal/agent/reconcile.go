@@ -56,6 +56,10 @@ func (a *Agent) apply(ctx context.Context, spec *proto.Spec) proto.Applied {
 		applied.Removed = append(applied.Removed, name)
 	}
 
+	if err := a.ensureNetwork(ctx); err != nil {
+		slog.Error("could not create the private network", "error", err)
+	}
+
 	for _, volume := range spec.Volumes {
 		if err := a.ensureVolume(ctx, volume); err != nil {
 			slog.Error("could not create volume", "volume", volume.Name, "error", err)
@@ -86,6 +90,9 @@ func (a *Agent) apply(ctx context.Context, spec *proto.Spec) proto.Applied {
 		}
 		applied.Created = append(applied.Created, name)
 	}
+
+	// Configured after containers exist, so a hostname is never pointed at something absent.
+	a.syncRouter(ctx, spec)
 	return applied
 }
 
@@ -157,8 +164,11 @@ func (a *Agent) createContainer(ctx context.Context, want proto.SpecContainer) e
 		if protocol == "" {
 			protocol = "tcp"
 		}
-		args = append(args, "--publish",
-			fmt.Sprintf("%d:%d/%s", mapping.HostPort, mapping.ContainerPort, protocol))
+		published := fmt.Sprintf("%d:%d/%s", mapping.HostPort, mapping.ContainerPort, protocol)
+		if mapping.HostIP != "" {
+			published = mapping.HostIP + ":" + published
+		}
+		args = append(args, "--publish", published)
 	}
 	for _, mount := range want.Mounts {
 		spec := mount.Source + ":" + mount.Target
@@ -197,6 +207,25 @@ func (a *Agent) createContainer(ctx context.Context, want proto.SpecContainer) e
 func (a *Agent) removeContainer(ctx context.Context, name string) error {
 	_, err := a.docker(ctx, time.Minute, "rm", "--force", "--volumes=false", name)
 	return err
+}
+
+// ensureNetwork creates the private network managed containers share. Creating one that exists
+// is an error from Docker but not from our point of view, so the outcome is ignored.
+func (a *Agent) ensureNetwork(ctx context.Context) error {
+	if out := a.mustOutput(ctx, "network", "ls", "--filter", "name=^"+proto.Network+"$", "--format", "{{.Name}}"); out == proto.Network {
+		return nil
+	}
+	_, err := a.docker(ctx, 30*time.Second, "network", "create", proto.Network)
+	return err
+}
+
+// mustOutput runs a command and returns its output, empty when it fails.
+func (a *Agent) mustOutput(ctx context.Context, args ...string) string {
+	out, err := a.docker(ctx, 20*time.Second, args...)
+	if err != nil {
+		return ""
+	}
+	return out
 }
 
 // ensureVolume creates a volume if it is missing. Volumes are never removed automatically,

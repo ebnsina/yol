@@ -158,8 +158,22 @@ All notable changes to this project are recorded here, newest first. Format foll
   Ports something else on the machine is already using are recorded and never handed out, asking
   twice for the same purpose returns the same port so a retried deploy does not consume another,
   and a full range says so plainly rather than failing obscurely.
+- Hostnames are routed to containers by configuring the router over its own interface rather than
+  by writing files and restarting it, so changing where a hostname points never interrupts what is
+  already being served. Apps are reached by name over a private network, so nothing has to be
+  published to the machine to be served on the web.
+- Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
+  lets a custom domain start working without reconfiguring anything.
 
 ### Security
+
+- A customer's server will not obtain a certificate for a hostname until the control plane
+  confirms somebody added and verified it. Without that, anyone could point a name they own at a
+  customer's machine and make it request certificates on their behalf. The check refuses when it
+  cannot reach the control plane: a certificate not obtained can be retried, while one obtained
+  for a name we do not control cannot be taken back.
+- The router's control interface is bound to the machine itself, so only the agent can change what
+  the router serves, even though ports 80 and 443 are open to the world.
 
 - Row level security now covers **every** table, including organizations, accounts and
   sessions. Previously those three had no policies, so a query missing its filter could have

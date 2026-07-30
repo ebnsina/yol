@@ -9,6 +9,7 @@
 #   4. Setting up a server leaves everything already on it running.
 #   5. Logs can be read from a container we do not manage.
 #   6. A watched server has nothing whatsoever created on it.
+#   7. The router is configured over its own interface, which stays private to the machine.
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -280,6 +281,22 @@ routed=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8103 || echo 0
 [[ "$routed" == "200" ]] &&
 	check "the router answers web traffic" pass ||
 	check "the router answers web traffic" fail "returned $routed"
+
+config=$(ssh "${SSH_OPTS[@]}" -p 2203 root@localhost \
+	'curl -sS --max-time 5 http://127.0.0.1:2019/config/' 2>/dev/null)
+[[ "$config" == *'"yol"'* ]] &&
+	check "the router took the configuration we gave it" pass ||
+	check "the router took the configuration we gave it" fail "configuration: ${config:-none}"
+[[ "$config" == *'"permission"'*'/v1/tls/allow'* ]] &&
+	check "certificates are only obtained after we are asked" pass ||
+	check "certificates are only obtained after we are asked" fail "no permission check in the configuration"
+
+# The control interface can reconfigure everything the router serves, so it is bound to loopback
+# even though ports 80 and 443 are open to the world.
+bound=$(ssh "${SSH_OPTS[@]}" -p 2203 root@localhost 'docker port yol-router 2019' 2>/dev/null)
+[[ -n "$bound" && "$bound" != *"0.0.0.0"* && "$bound" != *"[::]"* ]] &&
+	check "the control interface is reachable only from the server itself" pass ||
+	check "the control interface is reachable only from the server itself" fail "bound to ${bound:-nothing}"
 
 echo
 echo "==> the agent recovers on its own"
