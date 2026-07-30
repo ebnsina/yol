@@ -33,13 +33,18 @@ migrate-status: ## Show migration status
 sqlc: ## Regenerate typed queries
 	sqlc generate
 
+# Loads .env explicitly; a missing file fails here rather than defaulting silently.
+define with_env
+	set -a && . ./.env && set +a &&
+endef
+
 .PHONY: api
 api: ## Run the control plane API
-	go run ./cmd/api
+	$(with_env) go run ./cmd/api
 
 .PHONY: agent
 agent: ## Run the agent locally
-	go run ./cmd/agent
+	$(with_env) go run ./cmd/agent
 
 .PHONY: web
 web: ## Run the frontend dev server
