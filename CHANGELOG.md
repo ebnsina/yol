@@ -83,6 +83,10 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Values that must be stored but never readable from the database alone, such as a customer's
   SSH key, are encrypted with a purpose label, so a value stored for one use cannot be read
   back through a path meant for another.
+- A versioned contract between the control plane and the agents on customer servers, designed
+  so the two can be upgraded in any order. Agents report what they are capable of rather than
+  relying on version comparisons, unknown fields and message types are ignored instead of
+  causing a failure, and watch-only is carried in the contract so the agent itself enforces it.
 
 ### Security
 
