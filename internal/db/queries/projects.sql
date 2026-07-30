@@ -35,6 +35,9 @@ WHERE p.repo_external_id = $1 AND e.branch = $2;
 -- name: SetEnvironmentServer :exec
 UPDATE environments SET server_id = $2, updated_at = now() WHERE id = $1;
 
+-- name: SetEnvironmentBranch :exec
+UPDATE environments SET branch = $2, updated_at = now() WHERE id = $1;
+
 -- name: CreateService :one
 INSERT INTO services (id, org_id, env_id, name, kind, health_path, health_port, memory_limit_bytes)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -54,6 +57,12 @@ JOIN environments e ON e.id = s.env_id
 JOIN projects p ON p.id = e.project_id
 WHERE e.server_id = $1
 ORDER BY p.slug, e.name, s.name;
+
+-- name: UpdateService :one
+UPDATE services
+SET health_path = $2, health_port = $3, memory_limit_bytes = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
 
 -- name: DeleteService :exec
 DELETE FROM services WHERE id = $1 AND org_id = $2;

@@ -461,6 +461,20 @@ func (q *Queries) ListServicesForServer(ctx context.Context, serverID *uuid.UUID
 	return items, nil
 }
 
+const setEnvironmentBranch = `-- name: SetEnvironmentBranch :exec
+UPDATE environments SET branch = $2, updated_at = now() WHERE id = $1
+`
+
+type SetEnvironmentBranchParams struct {
+	ID     uuid.UUID
+	Branch string
+}
+
+func (q *Queries) SetEnvironmentBranch(ctx context.Context, arg SetEnvironmentBranchParams) error {
+	_, err := q.db.Exec(ctx, setEnvironmentBranch, arg.ID, arg.Branch)
+	return err
+}
+
 const setEnvironmentServer = `-- name: SetEnvironmentServer :exec
 UPDATE environments SET server_id = $2, updated_at = now() WHERE id = $1
 `
@@ -473,4 +487,41 @@ type SetEnvironmentServerParams struct {
 func (q *Queries) SetEnvironmentServer(ctx context.Context, arg SetEnvironmentServerParams) error {
 	_, err := q.db.Exec(ctx, setEnvironmentServer, arg.ID, arg.ServerID)
 	return err
+}
+
+const updateService = `-- name: UpdateService :one
+UPDATE services
+SET health_path = $2, health_port = $3, memory_limit_bytes = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, org_id, env_id, name, kind, health_path, health_port, memory_limit_bytes, created_at, updated_at
+`
+
+type UpdateServiceParams struct {
+	ID               uuid.UUID
+	HealthPath       *string
+	HealthPort       *int32
+	MemoryLimitBytes int64
+}
+
+func (q *Queries) UpdateService(ctx context.Context, arg UpdateServiceParams) (Service, error) {
+	row := q.db.QueryRow(ctx, updateService,
+		arg.ID,
+		arg.HealthPath,
+		arg.HealthPort,
+		arg.MemoryLimitBytes,
+	)
+	var i Service
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.EnvID,
+		&i.Name,
+		&i.Kind,
+		&i.HealthPath,
+		&i.HealthPort,
+		&i.MemoryLimitBytes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

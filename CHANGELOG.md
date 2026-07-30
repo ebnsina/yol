@@ -164,6 +164,14 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Projects, with a production and a staging environment created alongside each one. Wanting
+  somewhere to try a change before it reaches the public is the normal case, and adding the second
+  later would mean copying settings across by hand. Each environment follows its own branch and is
+  assigned its own server.
+- How a service is checked and what it may consume are settable per service, since only whoever
+  wrote the app knows which path answers and how much memory it needs.
+- Environment variables are encrypted before they are stored and are never sent back. A client can
+  see which names are set and when each last changed, and that is all there is to see.
 - Deploys do not drop requests. The new version is started alongside the one serving, and traffic
   moves only once it answers; the previous version is left running for a few seconds afterwards so
   requests already in flight finish. A container is named for its deployment, which is what lets

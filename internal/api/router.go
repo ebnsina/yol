@@ -11,6 +11,7 @@ import (
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/org"
 	"github.com/ebnsina/yol/internal/proto"
+	"github.com/ebnsina/yol/internal/secrets"
 	"github.com/ebnsina/yol/internal/server"
 )
 
@@ -19,6 +20,7 @@ type Deps struct {
 	Config  *config.API
 	DB      *db.Pool
 	Servers *server.Service
+	Secrets *secrets.Box
 	Hub     *server.Hub
 	Streams *server.Streams
 	Signer  *proto.SigningKey
@@ -39,6 +41,9 @@ func New(d Deps) http.Handler {
 	org.NewHandler(orgSvc, d.Config, authHandler.Required, authHandler.Optional).Routes(mux)
 
 	server.NewHandler(d.Servers, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
+
+	projects := deploy.NewProjects(d.DB, d.Secrets)
+	deploy.NewHandler(projects, orgSvc, authHandler.Required).Routes(mux)
 
 	// Agents authenticate with their own credential rather than a person's session.
 	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer, deploy.NewDeployments(d.DB)).Routes(mux)

@@ -81,6 +81,7 @@ func main() {
 		Config:  cfg,
 		DB:      pool,
 		Servers: servers,
+		Secrets: box,
 		Hub:     hub,
 		Streams: streams,
 		Signer:  signer,
