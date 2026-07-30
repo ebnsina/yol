@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ebnsina/yol/internal/proto"
@@ -43,7 +44,7 @@ func (a *Agent) apply(ctx context.Context, spec *proto.Spec) proto.Applied {
 		return applied
 	}
 
-	plan := planRollout(a.managedContainers(ctx, spec), spec)
+	plan := planRollout(a.managedContainers(ctx, spec), spec, a.abandonedContainers())
 	applied.Unchanged = plan.unchanged
 
 	if err := a.ensureNetwork(ctx); err != nil {
@@ -87,12 +88,20 @@ type rolloutPlan struct {
 	unchanged int
 }
 
-func planRollout(actual map[string]proto.Container, spec *proto.Spec) rolloutPlan {
+func planRollout(actual map[string]proto.Container, spec *proto.Spec, abandoned map[string]bool) rolloutPlan {
 	var plan rolloutPlan
 
 	desired := make(map[string]bool, len(spec.Containers))
 	for _, want := range spec.Containers {
 		desired[want.Name] = true
+
+		// A version already given up on is not started again. A container is named for its
+		// deployment, so this is that one version and nothing else, and the control plane drops it
+		// from the desired state as soon as it hears. Until then, starting it would begin another
+		// wait for something that has already been shown not to answer.
+		if abandoned[want.Name] {
+			continue
+		}
 
 		current, exists := actual[want.Name]
 		switch {
@@ -159,25 +168,45 @@ func (a *Agent) create(ctx context.Context, want proto.SpecContainer, applied *p
 func (a *Agent) gate(ctx context.Context, started []proto.SpecContainer, applied *proto.Applied) map[string]bool {
 	unproven := make(map[string]bool)
 
+	var (
+		wait     sync.WaitGroup
+		mu       sync.Mutex
+		outcomes []proto.Rollout
+	)
 	for _, want := range started {
 		if want.HealthCheck == nil {
 			continue
 		}
 
-		outcome := proto.Rollout{Container: want.Name, Deployment: want.Labels[proto.LabelDeployment]}
-		if err := a.awaitHealthy(ctx, want.Name, want.HealthCheck); err != nil {
-			slog.Error("a new container never started serving", "container", want.Name, "error", err)
-			unproven[want.Name] = true
-			outcome.Reason = "This version started but never began answering, so it was not put in front of anyone."
+		wait.Add(1)
+		go func(want proto.SpecContainer) {
+			defer wait.Done()
 
-			if err := a.removeContainer(ctx, want.Name); err != nil {
-				slog.Error("could not remove a container that never served", "container", want.Name, "error", err)
+			outcome := proto.Rollout{Container: want.Name, Deployment: want.Labels[proto.LabelDeployment]}
+			err := a.awaitHealthy(ctx, want.Name, want.HealthCheck)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if err != nil {
+				slog.Error("a new container never started serving", "container", want.Name, "error", err)
+				unproven[want.Name] = true
+				outcome.Reason = "This version started but never began answering, so it was not put in front of anyone."
+
+				// Remembered, so the next pass does not start it again and wait all over.
+				a.abandon(want.Name)
+				if err := a.removeContainer(ctx, want.Name); err != nil {
+					slog.Error("could not remove a container that never served", "container", want.Name, "error", err)
+				}
+			} else {
+				outcome.Healthy = true
 			}
-		} else {
-			outcome.Healthy = true
-		}
-		applied.Rollouts = append(applied.Rollouts, outcome)
+			outcomes = append(outcomes, outcome)
+		}(want)
 	}
+	wait.Wait()
+
+	applied.Rollouts = append(applied.Rollouts, outcomes...)
 	return unproven
 }
 

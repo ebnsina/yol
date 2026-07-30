@@ -32,7 +32,7 @@ func TestANewVersionIsStartedAlongsideTheOldOne(t *testing.T) {
 	actual := map[string]proto.Container{"app-old": running("app-old", "one")}
 	spec := &proto.Spec{Containers: []proto.SpecContainer{deployed("app-new", "two")}}
 
-	plan := planRollout(actual, spec)
+	plan := planRollout(actual, spec, nil)
 
 	if len(plan.create) != 1 || plan.create[0].Name != "app-new" {
 		t.Errorf("create = %+v, want the new version started", plan.create)
@@ -52,7 +52,7 @@ func TestAnUnchangedServerIsLeftAlone(t *testing.T) {
 	actual := map[string]proto.Container{"app": running("app", "one")}
 	spec := &proto.Spec{Containers: []proto.SpecContainer{deployed("app", "one")}}
 
-	plan := planRollout(actual, spec)
+	plan := planRollout(actual, spec, nil)
 
 	if plan.unchanged != 1 {
 		t.Errorf("unchanged = %d, want the running container recognised", plan.unchanged)
@@ -68,7 +68,7 @@ func TestAContainerKeepingItsNameIsReplaced(t *testing.T) {
 	actual := map[string]proto.Container{"db": running("db", "one")}
 	spec := &proto.Spec{Containers: []proto.SpecContainer{deployed("db", "two")}}
 
-	plan := planRollout(actual, spec)
+	plan := planRollout(actual, spec, nil)
 
 	if len(plan.replace) != 1 || plan.replace[0].Name != "db" {
 		t.Errorf("replace = %+v, want the container replaced under the same name", plan.replace)
@@ -87,7 +87,7 @@ func TestWhatIsNoLongerWantedIsRetired(t *testing.T) {
 	}
 	spec := &proto.Spec{Containers: []proto.SpecContainer{deployed("kept", "c")}}
 
-	plan := planRollout(actual, spec)
+	plan := planRollout(actual, spec, nil)
 
 	if !slices.Equal(plan.remove, []string{"gone-one", "gone-two"}) {
 		t.Errorf("remove = %v, want both retired and in a settled order", plan.remove)
@@ -99,7 +99,7 @@ func TestWhatIsNoLongerWantedIsRetired(t *testing.T) {
 func TestAnEmptySpecificationRetiresEverythingOfOurs(t *testing.T) {
 	actual := map[string]proto.Container{"app": running("app", "one")}
 
-	plan := planRollout(actual, &proto.Spec{})
+	plan := planRollout(actual, &proto.Spec{}, nil)
 
 	if !slices.Equal(plan.remove, []string{"app"}) {
 		t.Errorf("remove = %v, want our container retired", plan.remove)
@@ -134,5 +134,28 @@ func TestRoutesAreUntouchedWhenEverythingAnswered(t *testing.T) {
 
 	if trimmed := withoutRoutesTo(spec, nil); trimmed != spec {
 		t.Error("the specification was copied when nothing had failed")
+	}
+}
+
+// A version that was started and never answered is finished. Starting it again would begin the
+// same wait for the same outcome, and hold up everything else on the machine while it did.
+func TestAVersionGivenUpOnIsNotStartedAgain(t *testing.T) {
+	spec := &proto.Spec{Containers: []proto.SpecContainer{deployed("app-broken", "two")}}
+
+	plan := planRollout(map[string]proto.Container{}, spec, map[string]bool{"app-broken": true})
+
+	if len(plan.create) != 0 {
+		t.Errorf("create = %+v, want a version already given up on left alone", plan.create)
+	}
+}
+
+// Giving up on one version says nothing about the next, which is a different container entirely.
+func TestGivingUpOnAVersionDoesNotAffectTheNextOne(t *testing.T) {
+	spec := &proto.Spec{Containers: []proto.SpecContainer{deployed("app-new", "three")}}
+
+	plan := planRollout(map[string]proto.Container{}, spec, map[string]bool{"app-broken": true})
+
+	if len(plan.create) != 1 {
+		t.Errorf("create = %+v, want the new version started", plan.create)
 	}
 }

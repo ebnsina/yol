@@ -319,6 +319,11 @@ All notable changes to this project are recorded here, newest first. Format foll
 
 ### Fixed
 
+- A version that started and never answered was created again on the next pass, and checked again,
+  and again: a wait for something already shown not to work. One is now given up on for as long as
+  the agent runs, and a container is named for its deployment, so a later version is unaffected.
+- One version being slow to answer held up every other project on the machine, because versions were
+  checked one after another. They are checked alongside each other now.
 - Changing where a service listens broke the app that was already serving. Traffic was pointed at
   whatever port the service currently named, rather than the port the running version was rolled out
   with, so a setting meant for the next deploy took effect on the last one immediately. A version's

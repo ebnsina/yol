@@ -54,6 +54,12 @@ type Agent struct {
 	// in flight finish rather than being cut off. A field so a test need not wait it out.
 	drain time.Duration
 
+	// Versions this agent gave up on: they were started, never answered, and were taken away. Kept
+	// so a specification still naming one does not start it again and wait all over. A container is
+	// named for its deployment, so this can never affect a later version.
+	abandonedMu sync.Mutex
+	abandoned   map[string]bool
+
 	// The specification currently held, guarded because reconciliation and the connection
 	// read it from different goroutines.
 	specMu sync.RWMutex
@@ -81,6 +87,7 @@ func New(cfg *config.Agent, collector Collector) *Agent {
 		mode:      proto.ModeWatch,
 		tails:     newTails(),
 		drain:     defaultDrain,
+		abandoned: make(map[string]bool),
 	}
 }
 
@@ -446,6 +453,28 @@ func (a *Agent) refuse(ctx context.Context) {
 		return
 	}
 	_ = a.sendRaw(ctx, encoded)
+}
+
+// abandon records a version that was started and never answered.
+func (a *Agent) abandon(container string) {
+	a.abandonedMu.Lock()
+	defer a.abandonedMu.Unlock()
+
+	if a.abandoned == nil {
+		a.abandoned = make(map[string]bool)
+	}
+	a.abandoned[container] = true
+}
+
+func (a *Agent) abandonedContainers() map[string]bool {
+	a.abandonedMu.Lock()
+	defer a.abandonedMu.Unlock()
+
+	out := make(map[string]bool, len(a.abandoned))
+	for name := range a.abandoned {
+		out[name] = true
+	}
+	return out
 }
 
 // specVersion is what the agent currently holds, so the control plane can skip resending an
