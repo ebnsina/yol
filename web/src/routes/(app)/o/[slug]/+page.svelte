@@ -30,6 +30,7 @@
 	} from '$lib/ui';
 	import {
 		Copy01Icon,
+		FolderLibraryIcon,
 		MailAtSign01Icon,
 		ServerStack01Icon,
 		UserGroupIcon
@@ -142,6 +143,10 @@
 				<h1 class="text-xl font-semibold tracking-tight">{organization.name}</h1>
 			</div>
 			<div class="flex items-center gap-2">
+				<Button href={`/o/${slug}/projects`} size="sm" variant="secondary">
+					<Icon icon={FolderLibraryIcon} size={14} />
+					Projects
+				</Button>
 				<Button href={`/o/${slug}/servers`} size="sm" variant="secondary">
 					<Icon icon={ServerStack01Icon} size={14} />
 					Servers

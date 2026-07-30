@@ -164,6 +164,16 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Project screens: a list, a project with its environments, and one deploy with its output. An
+  environment shows which server it runs on and which branch it follows, both changeable in place,
+  and says plainly when it has nowhere to run rather than offering a deploy that would fail.
+- Variables are added and removed per environment. Names and when each changed are listed; a value
+  is written once and never shown again, because the API does not send one back.
+- A deploy is followed as it happens, asking only for output that has arrived since the last line
+  on screen, and stops asking once the deploy has finished. A failed one says that whatever was
+  serving before still is.
+- Going back to a previous version is offered on the version itself, where somebody looking at what
+  broke already is.
 - Deploying by hand means the same thing as pushing: the head of the branch the environment follows
   is looked up and built, rather than whatever a client happened to send.
 - Rolling back runs an image already on the machine, so it takes seconds rather than a build. It is

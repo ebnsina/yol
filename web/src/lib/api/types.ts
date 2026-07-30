@@ -138,3 +138,85 @@ export const SERVER_STATUS_LABELS: Record<ServerStatus, string> = {
 	offline: 'Not responding',
 	failed: 'Setup did not finish'
 };
+
+/** A project holds the environments an app is deployed into. */
+export interface Project {
+	id: string;
+	name: string;
+	slug: string;
+	repository: { provider: string; fullName: string } | null;
+	environments?: Environment[];
+	createdAt: string;
+	permissions: { deploy: boolean; manage: boolean };
+}
+
+export interface Environment {
+	id: string;
+	name: string;
+	branch: string;
+	serverId: string | null;
+	services?: Service[];
+}
+
+export type ServiceKind =
+	'app' | 'postgres' | 'mysql' | 'redis' | 'clickhouse' | 'sqlite' | 'srs' | 'mediamtx';
+
+export interface Service {
+	id: string;
+	name: string;
+	kind: ServiceKind;
+	healthPath: string | null;
+	healthPort: number | null;
+	memoryLimitBytes: number;
+}
+
+export type DeploymentStatus =
+	'queued' | 'building' | 'deploying' | 'live' | 'failed' | 'superseded';
+
+export interface Deployment {
+	id: string;
+	status: DeploymentStatus;
+	commitSha: string | null;
+	commitRef: string | null;
+	imageRef: string | null;
+	failureReason: string | null;
+	createdAt: string;
+	startedAt: string | null;
+	finishedAt: string | null;
+}
+
+/** In words, because a status on its own does not say what is happening. */
+export const DEPLOYMENT_STATUS_LABELS: Record<DeploymentStatus, string> = {
+	queued: 'Waiting to start',
+	building: 'Building',
+	deploying: 'Going out',
+	live: 'Live',
+	failed: 'Failed',
+	superseded: 'Replaced'
+};
+
+export interface DeploymentLine {
+	stream: string;
+	text: string;
+	at: string;
+}
+
+/** Access somebody granted us on GitHub. */
+export interface Installation {
+	id: string;
+	account: string;
+	createdAt: string;
+}
+
+export interface Repository {
+	id: number;
+	fullName: string;
+	private: boolean;
+	defaultBranch: string;
+}
+
+/** A variable's name and when it changed. The value is never sent back. */
+export interface Variable {
+	name: string;
+	updatedAt: string;
+}
