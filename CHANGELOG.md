@@ -319,6 +319,11 @@ All notable changes to this project are recorded here, newest first. Format foll
 
 ### Fixed
 
+- Changing where a service listens broke the app that was already serving. Traffic was pointed at
+  whatever port the service currently named, rather than the port the running version was rolled out
+  with, so a setting meant for the next deploy took effect on the last one immediately. A version's
+  port and health path are now recorded when it is placed, alongside its container name, and belong
+  to it for as long as it runs.
 - A deploy could never have finished: the container of a version going out was left out of what a
   server was told to run until that version was live, and it could only become live once the server
   had started it and reported that it answered. Both the version serving and the one going out are

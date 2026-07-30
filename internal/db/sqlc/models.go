@@ -461,6 +461,8 @@ type Placement struct {
 	ServerID      uuid.UUID
 	ContainerName string
 	CreatedAt     pgtype.Timestamptz
+	Port          int32
+	HealthPath    *string
 }
 
 type PortAllocation struct {

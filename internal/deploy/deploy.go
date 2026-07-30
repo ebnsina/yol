@@ -111,12 +111,20 @@ func (p *Projects) Deploy(ctx context.Context, target DeployTarget, commitSHA, r
 		// Where this version will run. Written now so the desired state already names it by the
 		// time the image exists, and named for the deployment so it starts alongside whatever is
 		// serving rather than in place of it.
+		service, err := q.GetService(ctx, target.ServiceID)
+		if err != nil {
+			return notFoundOr(err, "service")
+		}
 		if _, err := q.CreatePlacement(ctx, sqlc.CreatePlacementParams{
 			ID:            uuid.New(),
 			OrgID:         target.OrgID,
 			DeploymentID:  deploymentID,
 			ServerID:      *target.ServerID,
 			ContainerName: ContainerNameFor(target.ServiceID, deploymentID),
+			// Recorded now, so changing either later cannot re-point traffic at a version that
+			// was never listening there.
+			Port:       int32(servicePort(service.HealthPort)),
+			HealthPath: service.HealthPath,
 		}); err != nil {
 			return httpx.Internal(err)
 		}
@@ -172,6 +180,14 @@ func (p *Projects) failDeployment(ctx context.Context, orgID, deploymentID uuid.
 		slog.Error("could not record a deploy that failed to start",
 			"deployment", deploymentID, "error", err)
 	}
+}
+
+// servicePort is where a service listens, which is the usual one when it never said.
+func servicePort(port *int32) int {
+	if port == nil || *port == 0 {
+		return 80
+	}
+	return int(*port)
 }
 
 // ImageRefFor names the image a deployment produces. Derived from the service and the commit rather

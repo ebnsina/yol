@@ -161,9 +161,9 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Dom
 }
 
 const createPlacement = `-- name: CreatePlacement :one
-INSERT INTO placements (id, org_id, deployment_id, server_id, container_name)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, org_id, deployment_id, server_id, container_name, created_at
+INSERT INTO placements (id, org_id, deployment_id, server_id, container_name, port, health_path)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, deployment_id, server_id, container_name, created_at, port, health_path
 `
 
 type CreatePlacementParams struct {
@@ -172,8 +172,12 @@ type CreatePlacementParams struct {
 	DeploymentID  uuid.UUID
 	ServerID      uuid.UUID
 	ContainerName string
+	Port          int32
+	HealthPath    *string
 }
 
+// The port and health path are captured here rather than read from the service later, so changing
+// either does not re-point traffic at a version that never listened on it.
 func (q *Queries) CreatePlacement(ctx context.Context, arg CreatePlacementParams) (Placement, error) {
 	row := q.db.QueryRow(ctx, createPlacement,
 		arg.ID,
@@ -181,6 +185,8 @@ func (q *Queries) CreatePlacement(ctx context.Context, arg CreatePlacementParams
 		arg.DeploymentID,
 		arg.ServerID,
 		arg.ContainerName,
+		arg.Port,
+		arg.HealthPath,
 	)
 	var i Placement
 	err := row.Scan(
@@ -190,6 +196,8 @@ func (q *Queries) CreatePlacement(ctx context.Context, arg CreatePlacementParams
 		&i.ServerID,
 		&i.ContainerName,
 		&i.CreatedAt,
+		&i.Port,
+		&i.HealthPath,
 	)
 	return i, err
 }
@@ -543,8 +551,8 @@ func (q *Queries) ListEnvVars(ctx context.Context, envID uuid.UUID) ([]ListEnvVa
 }
 
 const listLivePlacementsForServer = `-- name: ListLivePlacementsForServer :many
-SELECT pl.id, pl.org_id, pl.deployment_id, pl.server_id, pl.container_name, pl.created_at, d.image_ref, d.status, d.id AS deployment_id, s.id AS service_id, s.name AS service_name,
-       s.kind, s.memory_limit_bytes, s.health_path, s.health_port,
+SELECT pl.id, pl.org_id, pl.deployment_id, pl.server_id, pl.container_name, pl.created_at, pl.port, pl.health_path, d.image_ref, d.status, d.id AS deployment_id, s.id AS service_id, s.name AS service_name,
+       s.kind, s.memory_limit_bytes,
        e.id AS environment_id, e.name AS environment_name,
        p.id AS project_id, p.slug AS project_slug
 FROM placements pl
@@ -563,6 +571,8 @@ type ListLivePlacementsForServerRow struct {
 	ServerID         uuid.UUID
 	ContainerName    string
 	CreatedAt        pgtype.Timestamptz
+	Port             int32
+	HealthPath       *string
 	ImageRef         *string
 	Status           DeploymentStatus
 	DeploymentID_2   uuid.UUID
@@ -570,8 +580,6 @@ type ListLivePlacementsForServerRow struct {
 	ServiceName      string
 	Kind             ServiceKind
 	MemoryLimitBytes int64
-	HealthPath       *string
-	HealthPort       *int32
 	EnvironmentID    uuid.UUID
 	EnvironmentName  string
 	ProjectID        uuid.UUID
@@ -597,6 +605,8 @@ func (q *Queries) ListLivePlacementsForServer(ctx context.Context, serverID uuid
 			&i.ServerID,
 			&i.ContainerName,
 			&i.CreatedAt,
+			&i.Port,
+			&i.HealthPath,
 			&i.ImageRef,
 			&i.Status,
 			&i.DeploymentID_2,
@@ -604,8 +614,6 @@ func (q *Queries) ListLivePlacementsForServer(ctx context.Context, serverID uuid
 			&i.ServiceName,
 			&i.Kind,
 			&i.MemoryLimitBytes,
-			&i.HealthPath,
-			&i.HealthPort,
 			&i.EnvironmentID,
 			&i.EnvironmentName,
 			&i.ProjectID,
@@ -622,7 +630,7 @@ func (q *Queries) ListLivePlacementsForServer(ctx context.Context, serverID uuid
 }
 
 const listPlacements = `-- name: ListPlacements :many
-SELECT id, org_id, deployment_id, server_id, container_name, created_at FROM placements WHERE deployment_id = $1
+SELECT id, org_id, deployment_id, server_id, container_name, created_at, port, health_path FROM placements WHERE deployment_id = $1
 `
 
 func (q *Queries) ListPlacements(ctx context.Context, deploymentID uuid.UUID) ([]Placement, error) {
@@ -641,6 +649,8 @@ func (q *Queries) ListPlacements(ctx context.Context, deploymentID uuid.UUID) ([
 			&i.ServerID,
 			&i.ContainerName,
 			&i.CreatedAt,
+			&i.Port,
+			&i.HealthPath,
 		); err != nil {
 			return nil, err
 		}

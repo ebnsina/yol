@@ -40,9 +40,11 @@ WHERE service_id = $1 AND status = 'live' AND id <> $2;
 -- name: SetDeploymentReplaced :exec
 UPDATE deployments SET replaced_deployment_id = $2 WHERE id = $1;
 
+-- The port and health path are captured here rather than read from the service later, so changing
+-- either does not re-point traffic at a version that never listened on it.
 -- name: CreatePlacement :one
-INSERT INTO placements (id, org_id, deployment_id, server_id, container_name)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO placements (id, org_id, deployment_id, server_id, container_name, port, health_path)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: ListPlacements :many
@@ -53,7 +55,7 @@ SELECT * FROM placements WHERE deployment_id = $1;
 -- agent would never start it, and it cannot become live until the agent reports that it answers.
 -- name: ListLivePlacementsForServer :many
 SELECT pl.*, d.image_ref, d.status, d.id AS deployment_id, s.id AS service_id, s.name AS service_name,
-       s.kind, s.memory_limit_bytes, s.health_path, s.health_port,
+       s.kind, s.memory_limit_bytes,
        e.id AS environment_id, e.name AS environment_name,
        p.id AS project_id, p.slug AS project_slug
 FROM placements pl

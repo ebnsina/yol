@@ -111,7 +111,7 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 				spec.Routes = append(spec.Routes, proto.SpecRoute{
 					Host:      domain.Hostname,
 					Container: placement.ContainerName,
-					Port:      servicePort(domain.HealthPort),
+					Port:      int(placement.Port),
 				})
 			}
 
@@ -190,7 +190,7 @@ func containerFor(placement sqlc.ListLivePlacementsForServerRow, orgID uuid.UUID
 	// How the agent decides this version is serving before traffic is moved onto it. A path is
 	// asked for when the service named one, since accepting a connection is not the same as being
 	// able to answer a request.
-	gate := &proto.HealthGate{Port: servicePort(placement.HealthPort)}
+	gate := &proto.HealthGate{Port: int(placement.Port)}
 	if placement.HealthPath != nil && *placement.HealthPath != "" {
 		gate.HTTPPath = *placement.HealthPath
 	}
@@ -216,15 +216,7 @@ func fallbackRoute(serving map[uuid.UUID]sqlc.ListLivePlacementsForServerRow) *p
 	if found != 1 {
 		return nil
 	}
-	return &proto.SpecRoute{Container: only.ContainerName, Port: servicePort(only.HealthPort)}
-}
-
-// servicePort is where a service listens, defaulting to the usual one when it never said.
-func servicePort(port *int32) int {
-	if port == nil || *port == 0 {
-		return 80
-	}
-	return int(*port)
+	return &proto.SpecRoute{Container: only.ContainerName, Port: int(only.Port)}
 }
 
 // ContainerNameFor is how a service's container is named on a machine. The deployment is part of

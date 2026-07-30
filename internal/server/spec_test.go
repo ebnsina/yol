@@ -29,7 +29,8 @@ func livePlacement(kind sqlc.ServiceKind, port int32) sqlc.ListLivePlacementsFor
 		ContainerName: deploy.ContainerNameFor(serviceID, deploymentID),
 		ImageRef:      &image,
 		Kind:          kind,
-		HealthPort:    &port,
+		// Recorded when the version was placed, not read from the service now.
+		Port: port,
 	}
 }
 
@@ -92,14 +93,14 @@ func TestAnAppWithNothingBuiltIsNotServedByAddress(t *testing.T) {
 	}
 }
 
-// An app that never said which port it listens on is assumed to be on the usual one.
-func TestAnAppWithNoPortGivenUsesTheUsualOne(t *testing.T) {
-	placement := livePlacement(sqlc.ServiceKindApp, 0)
-	placement.HealthPort = nil
+// Changing where a service listens must not re-point traffic at a version that was never listening
+// there: the port belongs to the version rolled out with it.
+func TestARouteUsesThePortItsVersionWasPlacedWith(t *testing.T) {
+	placement := livePlacement(sqlc.ServiceKindApp, 8080)
 
 	route := fallbackRoute(serving(placement))
-	if route == nil || route.Port != 80 {
-		t.Fatalf("route = %+v, want port 80", route)
+	if route == nil || route.Port != 8080 {
+		t.Fatalf("route = %+v, want the port recorded for this version", route)
 	}
 }
 

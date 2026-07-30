@@ -163,6 +163,9 @@ func (p *Projects) Rollback(
 			DeploymentID:  newID,
 			ServerID:      serverID,
 			ContainerName: ContainerNameFor(previous.ServiceID, newID),
+			// What it was reached on before, since it is the same image going back out.
+			Port:       placements[0].Port,
+			HealthPath: placements[0].HealthPath,
 		}); err != nil {
 			return httpx.Internal(err)
 		}
