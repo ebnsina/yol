@@ -164,6 +164,17 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- A custom domain needs nothing bought from us: the name is the customer's and so is the server, so
+  adding a hostname is what turns HTTPS on. The record to create is spelled out rather than
+  described, and the hostname is only served once it is shown to point at that server — otherwise a
+  certificate would be requested for a name somebody else controls.
+- No free subdomains are handed out yet. An app is reached by the address of the server it was
+  placed on, over plain HTTP, and the interface says so plainly rather than implying HTTPS is
+  available: no certificate authority issues for an address. The parent name to hand subdomains out
+  from is configuration, so buying one later fills a value in rather than changing how any of this
+  works.
+- A variable may now be required to be present while allowed to be empty, which is how "we have no
+  domain yet" is stated as a choice rather than looking like a value that went missing.
 - Each screen is a row of sections rather than one long scroll: a server shows what is running, what
   was already there, and its history; an environment shows its deployments, its variables and its
   settings. The chosen one is marked by a rule under it, which needs no colour to read as chosen.

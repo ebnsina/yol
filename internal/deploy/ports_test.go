@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -49,9 +50,10 @@ func newFixture(t *testing.T) *fixture {
 			f.orgID, "Ports "+short, "ports-"+short); err != nil {
 			return err
 		}
+		// A real address, because code that decides between an A record and a CNAME reads it.
 		_, err := tx.Exec(ctx,
 			`INSERT INTO servers (id, org_id, name, host) VALUES ($1, $2, 'test', $3)`,
-			f.serverID, f.orgID, "10.0.0."+short[:1])
+			f.serverID, f.orgID, fmt.Sprintf("10.0.%d.%d", f.serverID[0], f.serverID[1]))
 		return err
 	})
 	if err != nil {

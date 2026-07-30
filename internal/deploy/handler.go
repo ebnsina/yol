@@ -48,6 +48,95 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	route("GET "+base+"/{project}/deployments/{deployment}", h.showDeployment)
 	route("GET "+base+"/{project}/deployments/{deployment}/logs", h.deploymentLogs)
 	route("POST "+base+"/{project}/deployments/{deployment}/rollback", h.rollback)
+
+	route("GET "+base+"/{project}/environments/{environment}/address", h.address)
+	route("POST "+base+"/{project}/environments/{environment}/domains", h.addDomain)
+	route("POST "+base+"/{project}/domains/{domain}/verify", h.verifyDomain)
+	route("DELETE "+base+"/{project}/domains/{domain}", h.removeDomain)
+}
+
+// address says how an environment is reached today: by its server's address, and by any hostname
+// that has been pointed here.
+func (h *Handler) address(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	envID, ok := h.pathID(w, r, "environment", "environment")
+	if !ok {
+		return
+	}
+
+	address, err := h.projects.AddressFor(r.Context(), m, session.User.ID, envID)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"address": address})
+}
+
+type addDomainRequest struct {
+	Hostname string `json:"hostname"`
+}
+
+func (h *Handler) addDomain(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	envID, ok := h.pathID(w, r, "environment", "environment")
+	if !ok {
+		return
+	}
+	var req addDomainRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+
+	domain, err := h.projects.AddDomain(r.Context(), m, session.User.ID, envID, req.Hostname)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, map[string]any{"domain": domain})
+}
+
+// verifyDomain is asked for rather than polled: DNS takes as long as it takes, and somebody who
+// just created a record knows they have.
+func (h *Handler) verifyDomain(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	domainID, ok := h.pathID(w, r, "domain", "domain")
+	if !ok {
+		return
+	}
+
+	domain, err := h.projects.VerifyDomain(r.Context(), m, session.User.ID, domainID)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"domain": domain})
+}
+
+func (h *Handler) removeDomain(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	domainID, ok := h.pathID(w, r, "domain", "domain")
+	if !ok {
+		return
+	}
+
+	if err := h.projects.RemoveDomain(r.Context(), m, session.User.ID, domainID); err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // deploy builds and rolls out the head of the branch this environment follows.

@@ -36,6 +36,7 @@
 		SlidersHorizontalIcon,
 		VariableIcon
 	} from '@hugeicons/core-free-icons';
+	import AddressSection from './AddressSection.svelte';
 
 	interface Props {
 		slug: string;
@@ -222,6 +223,7 @@
 			bind:value={section}
 			label={`${environment.name} sections`}
 			tabs={[
+				{ value: 'address', label: 'Address', icon: GlobalIcon },
 				{
 					value: 'deployments',
 					label: 'Deployments',

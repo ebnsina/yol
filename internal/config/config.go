@@ -33,6 +33,12 @@ type API struct {
 	GitHubAppSlug       string
 	GitHubPrivateKey    []byte
 	GitHubWebhookSecret string
+
+	// The parent name free subdomains are handed out from, such as "yol.app". Required to be
+	// present, and may be empty: empty means none are handed out and an app is reached by the
+	// address of its server until somebody adds a hostname of their own. Buying a domain later is
+	// a matter of filling this in.
+	AppDomain string
 }
 
 // Agent is the managed-server binary configuration. Every field is required.
@@ -76,6 +82,7 @@ func LoadAPI() (*API, error) {
 		GitHubAppSlug:       l.str("YOL_GITHUB_APP_SLUG"),
 		GitHubPrivateKey:    l.pem("YOL_GITHUB_PRIVATE_KEY"),
 		GitHubWebhookSecret: l.str("YOL_GITHUB_WEBHOOK_SECRET"),
+		AppDomain:           l.optional("YOL_APP_DOMAIN"),
 	}
 	return cfg, l.err()
 }
@@ -228,6 +235,18 @@ func (l *loader) key(name string, wantBytes int) []byte {
 		return nil
 	}
 	return b
+}
+
+// optional reads a variable that must be present but may be empty. Empty is a choice the operator
+// made rather than a value that went missing, and a variable that is absent altogether still fails,
+// so a deployment cannot quietly skip one.
+func (l *loader) optional(name string) string {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		l.reject(name, "is not set (it may be empty, but it has to be present)")
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 // pem reads a private key, accepting it either as it comes out of the file or with the newlines

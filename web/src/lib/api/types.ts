@@ -220,3 +220,23 @@ export interface Variable {
 	name: string;
 	updatedAt: string;
 }
+
+/** Where an environment can be reached, and what stands between it and HTTPS. */
+export interface Address {
+	url: string;
+	domains: Domain[];
+	/** True when only the server's address is available, so the interface can say why. */
+	addressOnly: boolean;
+}
+
+export interface Domain {
+	id: string;
+	hostname: string;
+	/** True for a subdomain we hand out, which needs no verifying. */
+	ours: boolean;
+	verified: boolean;
+	addedAt: string;
+	verifiedAt: string | null;
+	/** What to create in DNS, present until it is verified. */
+	record: { type: string; name: string; value: string } | null;
+}

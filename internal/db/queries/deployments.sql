@@ -133,3 +133,11 @@ JOIN services s ON s.id = d.service_id
 JOIN environments e ON e.id = s.env_id
 WHERE e.server_id = $1 AND (d.verified_at IS NOT NULL OR d.ours)
 ORDER BY d.hostname;
+
+-- One hostname with the server it is meant to point at, which is what verification compares against.
+-- name: GetDomain :one
+SELECT d.*, e.server_id
+FROM domains d
+JOIN services s ON s.id = d.service_id
+JOIN environments e ON e.id = s.env_id
+WHERE d.id = $1;

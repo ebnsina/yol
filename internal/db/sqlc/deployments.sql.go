@@ -246,6 +246,42 @@ func (q *Queries) GetDeployment(ctx context.Context, id uuid.UUID) (Deployment, 
 	return i, err
 }
 
+const getDomain = `-- name: GetDomain :one
+SELECT d.id, d.org_id, d.service_id, d.hostname, d.ours, d.verified_at, d.created_at, e.server_id
+FROM domains d
+JOIN services s ON s.id = d.service_id
+JOIN environments e ON e.id = s.env_id
+WHERE d.id = $1
+`
+
+type GetDomainRow struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	ServiceID  uuid.UUID
+	Hostname   string
+	Ours       bool
+	VerifiedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	ServerID   *uuid.UUID
+}
+
+// One hostname with the server it is meant to point at, which is what verification compares against.
+func (q *Queries) GetDomain(ctx context.Context, id uuid.UUID) (GetDomainRow, error) {
+	row := q.db.QueryRow(ctx, getDomain, id)
+	var i GetDomainRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ServiceID,
+		&i.Hostname,
+		&i.Ours,
+		&i.VerifiedAt,
+		&i.CreatedAt,
+		&i.ServerID,
+	)
+	return i, err
+}
+
 const getLiveDeployment = `-- name: GetLiveDeployment :one
 SELECT id, org_id, service_id, status, commit_sha, commit_ref, image_ref, failure_reason, replaced_deployment_id, created_at, started_at, finished_at FROM deployments WHERE service_id = $1 AND status = 'live'
 `

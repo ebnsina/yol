@@ -1,10 +1,12 @@
 import { api } from './client';
 import type {
+	Address,
 	Deployment,
 	DeploymentLine,
 	Environment,
 	Installation,
 	Project,
+	Domain,
 	Repository,
 	Service,
 	Variable
@@ -93,6 +95,24 @@ export const projectsApi = {
 				{}
 			)
 			.then((r) => r.deployment),
+
+	address: (slug: string, id: string, envId: string) =>
+		api
+			.get<{ address: Address }>(`${base(slug)}/${id}/environments/${envId}/address`)
+			.then((r) => r.address),
+
+	addDomain: (slug: string, id: string, envId: string, hostname: string) =>
+		api
+			.post<{ domain: Domain }>(`${base(slug)}/${id}/environments/${envId}/domains`, { hostname })
+			.then((r) => r.domain),
+
+	verifyDomain: (slug: string, id: string, domainId: string) =>
+		api
+			.post<{ domain: Domain }>(`${base(slug)}/${id}/domains/${domainId}/verify`, {})
+			.then((r) => r.domain),
+
+	removeDomain: (slug: string, id: string, domainId: string) =>
+		api.delete<void>(`${base(slug)}/${id}/domains/${domainId}`),
 
 	connectRepository: (
 		slug: string,

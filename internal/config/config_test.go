@@ -26,6 +26,8 @@ func validAPIEnv() map[string]string {
 		"YOL_GITHUB_APP_SLUG":       "yol",
 		"YOL_GITHUB_PRIVATE_KEY":    "-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----",
 		"YOL_GITHUB_WEBHOOK_SECRET": "a-shared-secret",
+		// Present and empty: no subdomains are handed out yet.
+		"YOL_APP_DOMAIN": "",
 	}
 }
 
@@ -63,6 +65,18 @@ func TestSomethingThatIsNotAPrivateKeyIsRefused(t *testing.T) {
 	}
 }
 
+// A variable that may be empty still has to be present, so a deployment cannot skip one by
+// accident and get behaviour nobody chose.
+func TestAnOptionalVariableStillHasToBePresent(t *testing.T) {
+	env := validAPIEnv()
+	delete(env, "YOL_APP_DOMAIN")
+	setEnv(t, env)
+
+	if _, err := LoadAPI(); err == nil {
+		t.Error("a variable that was not set at all was accepted")
+	}
+}
+
 func TestLoadAPIValid(t *testing.T) {
 	setEnv(t, validAPIEnv())
 
@@ -87,9 +101,14 @@ func TestLoadAPIValid(t *testing.T) {
 	}
 }
 
-// A missing key must fail rather than silently fall back to a default.
+// A missing key must fail rather than silently fall back to a default. One key is allowed to be
+// empty, which is checked on its own above: a name to hand out subdomains from is something we may
+// genuinely not have yet.
 func TestLoadAPIMissingKeyFails(t *testing.T) {
 	for key := range validAPIEnv() {
+		if key == "YOL_APP_DOMAIN" {
+			continue
+		}
 		t.Run(key, func(t *testing.T) {
 			env := validAPIEnv()
 			delete(env, key)
