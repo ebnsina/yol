@@ -8,6 +8,7 @@ import (
 	"github.com/ebnsina/yol/internal/config"
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
+	"github.com/ebnsina/yol/internal/org"
 )
 
 // Deps holds everything the routes need. Fields are added as domains land.
@@ -24,7 +25,10 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /ready", readyHandler(d.DB))
 
 	authSvc := auth.NewService(d.DB, d.Config)
-	auth.NewHandler(authSvc, d.Config).Routes(mux)
+	authHandler := auth.NewHandler(authSvc, d.Config)
+	authHandler.Routes(mux)
+
+	org.NewHandler(org.NewService(d.DB), d.Config, authHandler.Required, authHandler.Optional).Routes(mux)
 
 	return httpx.Chain(mux,
 		httpx.WithRequestID,

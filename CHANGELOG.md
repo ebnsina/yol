@@ -32,6 +32,13 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Passwords require twelve characters rather than a mix of character classes, which is both
   harder to guess and easier to remember.
 - Cross-origin requests are permitted from the configured web origin only.
+- Organizations with four roles: owner, admin, member and viewer. Create and rename an
+  organization, list and manage members, change roles, and remove people.
+- Invitations with single-use links that expire after seven days, including a preview page
+  readable before signing in so an invitee can see who invited them.
+- Every organization response includes the permissions of whoever asked, so clients show or
+  hide controls from that rather than reproducing the rules themselves.
+- An audit record is written for organization changes, invitations and membership changes.
 
 ### Security
 
@@ -41,3 +48,9 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Invitation redemption uses a single narrowly scoped `SECURITY DEFINER` function that
   returns at most one row and only to a caller presenting the secret token. It is the only
   sanctioned path around a tenant policy.
+- Invitations are bound to the address they were sent to, so forwarding a link does not let
+  someone else join. Tokens are single-use and stored only as hashes.
+- An admin can manage members but cannot create an owner, so the role cannot be used to
+  escalate. An organization can never be left without an owner.
+- Asking for an organization you do not belong to reports that it was not found rather than
+  that you lack access, so responses cannot be used to discover which organizations exist.

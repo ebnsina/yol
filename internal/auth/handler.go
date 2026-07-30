@@ -124,6 +124,24 @@ func (h *Handler) Required(next http.Handler) http.Handler {
 	})
 }
 
+// Optional attaches a session when credentials are present but allows the request through
+// without them, for pages that read differently when signed in.
+func (h *Handler) Optional(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := TokenFromRequest(r)
+		if token == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		session, err := h.svc.Authenticate(r.Context(), token)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(WithSession(r.Context(), session)))
+	})
+}
+
 // WithSession attaches a session to the context.
 func WithSession(ctx context.Context, s *Session) context.Context {
 	return context.WithValue(ctx, sessionKey, s)
