@@ -30,6 +30,16 @@ make api                # run the control plane
 make web                # run the frontend
 ```
 
+To work on server management, start the stand-in servers as well. They run the same operating
+system and service manager as a real target, so nothing here needs a machine of your own:
+
+```sh
+make vps-up             # three stand-in servers on ports 2201-2203
+make vps-status
+```
+
+See `dev/README.md` for details.
+
 Run `make help` to list every target.
 
 ## License

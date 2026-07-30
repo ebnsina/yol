@@ -6,6 +6,11 @@ SHELL := /bin/bash
 DB_URL ?= postgres://yol:yol@localhost:5442/yol?sslmode=disable
 MIGRATIONS := internal/db/migrations
 
+COMPOSE := docker compose -f dev/compose.yaml
+VPS_KEY := dev/fake-vps/keys/id_ed25519
+VPS_SSH := ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i $(VPS_KEY)
+N ?= 1
+
 .PHONY: help
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -25,6 +30,45 @@ db-reset: ## Destroy and rebuild the local database from scratch
 	docker compose -f dev/compose.yaml up -d postgres
 	until docker compose -f dev/compose.yaml exec -T postgres pg_isready -U yol -d yol >/dev/null 2>&1; do sleep 1; done
 	$(MAKE) migrate-up
+
+.PHONY: vps-keys
+vps-keys: ## Generate the harness SSH key if it is missing
+	@test -f $(VPS_KEY) || { \
+		mkdir -p dev/fake-vps/keys; \
+		ssh-keygen -t ed25519 -N '' -C yol-dev-harness -f $(VPS_KEY) -q; \
+		echo "generated $(VPS_KEY)"; }
+	@cp $(VPS_KEY).pub dev/fake-vps/authorized_keys
+
+.PHONY: vps-up
+vps-up: vps-keys ## Start the stand-in servers (ports 2201-2203)
+	$(COMPOSE) --profile vps up -d --build vps-1 vps-2 vps-3
+	@echo "waiting for all three to accept connections and run containers"
+	@for port in 2201 2202 2203; do \
+		until $(VPS_SSH) -o ConnectTimeout=2 -p $$port root@localhost 'docker info >/dev/null 2>&1' 2>/dev/null; do sleep 1; done; \
+		echo "  ready on $$port"; \
+	done
+
+.PHONY: vps-down
+vps-down: ## Stop the stand-in servers, keeping their disks
+	$(COMPOSE) --profile vps stop vps-1 vps-2 vps-3
+
+.PHONY: vps-reset
+vps-reset: ## Destroy the stand-in servers and their disks
+	$(COMPOSE) --profile vps down -v vps-1 vps-2 vps-3
+
+.PHONY: vps-ssh
+vps-ssh: ## Open a shell on a stand-in server (make vps-ssh N=2)
+	$(VPS_SSH) -p 220$(N) root@localhost
+
+.PHONY: vps-status
+vps-status: ## Show what each stand-in server is running
+	@for n in 1 2 3; do \
+		printf '\033[1mvps-%s\033[0m (ssh 220%s, http 810%s)\n' $$n $$n $$n; \
+		$(VPS_SSH) -o ConnectTimeout=2 -p 220$$n root@localhost \
+			'echo "  systemd $$(systemctl is-system-running)  docker $$(systemctl is-active docker)"; \
+			 docker ps --format "  {{.Names}} {{.Status}}" | head -10' 2>/dev/null \
+			|| echo "  not reachable"; \
+	done
 
 .PHONY: migrate-up
 migrate-up: ## Apply all migrations

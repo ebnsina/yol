@@ -68,6 +68,9 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Controls are shown or hidden from the permissions the API reports, so a member sees roles as
   plain text where an owner sees a role picker, and neither view reproduces the rules.
 - Our own pages for addresses that do not exist and for unexpected failures.
+- Development harness with three stand-in servers, each running Ubuntu with systemd, an SSH
+  daemon and Docker, so the setup path used locally is the same one that will run on a real
+  machine. Started with `make vps-up`; see `dev/README.md`.
 
 ### Security
 

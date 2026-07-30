@@ -18,5 +18,62 @@ services:
       timeout: 3s
       retries: 15
 
+  # Stand-ins for customer servers. Started with the vps profile so the database can run
+  # without them. Privileged because systemd and Docker inside a container require it —
+  # acceptable for a local harness, and the reason these images are never published.
+  vps-1: &vps
+    profiles: [vps]
+    build: ./fake-vps
+    image: yol-fake-vps
+    privileged: true
+    cgroup: host
+    stop_signal: SIGRTMIN+3
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - vps-1-docker:/var/lib/docker
+      - vps-1-containerd:/var/lib/containerd
+    ports:
+      - "2201:22"
+      - "8101:80"
+      - "8401:443"
+    healthcheck:
+      test: ["CMD-SHELL", "systemctl is-system-running --wait | grep -qE 'running|degraded' && docker info >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+  vps-2:
+    <<: *vps
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - vps-2-docker:/var/lib/docker
+      - vps-2-containerd:/var/lib/containerd
+    ports:
+      - "2202:22"
+      - "8102:80"
+      - "8402:443"
+
+  vps-3:
+    <<: *vps
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - vps-3-docker:/var/lib/docker
+      - vps-3-containerd:/var/lib/containerd
+    ports:
+      - "2203:22"
+      - "8103:80"
+      - "8403:443"
+
 volumes:
   postgres-data:
+  vps-1-docker:
+  vps-1-containerd:
+  vps-2-docker:
+  vps-2-containerd:
+  vps-3-docker:
+  vps-3-containerd:

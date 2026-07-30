@@ -30,3 +30,7 @@ coverage.out
 .idea/
 .vscode/
 *.swp
+
+# harness SSH key, generated on first run
+dev/fake-vps/keys/
+dev/fake-vps/authorized_keys
