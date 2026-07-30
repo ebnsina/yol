@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -257,6 +259,32 @@ func (a *App) Installation(ctx context.Context, installationID int64) (*Installa
 		return nil, err
 	}
 	return &Installation{ID: answer.ID, Account: answer.Account.Login}, nil
+}
+
+// LatestCommit is what a branch currently points at. Resolved rather than assumed, so deploying by
+// hand builds the same commit a push would have.
+func (a *App) LatestCommit(ctx context.Context, installationID, fullName, branch string) (string, error) {
+	numeric, err := strconv.ParseInt(installationID, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("github: read the installation: %w", err)
+	}
+	token, err := a.InstallationToken(ctx, numeric)
+	if err != nil {
+		return "", err
+	}
+
+	var answer struct {
+		SHA string `json:"sha"`
+	}
+	// A branch name goes in a path, and one containing a slash is ordinary, so it is escaped.
+	path := "/repos/" + fullName + "/commits/" + url.PathEscape(branch)
+	if err := a.call(ctx, http.MethodGet, path, token, nil, &answer); err != nil {
+		return "", err
+	}
+	if answer.SHA == "" {
+		return "", fmt.Errorf("github: %s has no commits on %s", fullName, branch)
+	}
+	return answer.SHA, nil
 }
 
 // SourceURL is where one commit of a repository can be fetched as an archive. Handed to the agent

@@ -94,3 +94,13 @@ RETURNING *;
 
 -- name: RevokeInstallation :exec
 SELECT revoke_installation($1);
+
+-- Everything a deploy of one environment needs, in one read. Scoped by row level security like
+-- every other query here, unlike the pre-identity lookup a push goes through.
+-- name: GetDeployTarget :one
+SELECT p.org_id, p.id AS project_id, e.id AS environment_id, s.id AS service_id, e.server_id,
+       e.branch, p.repo_full_name, p.repo_installation_id
+FROM environments e
+JOIN projects p ON p.id = e.project_id
+JOIN services s ON s.env_id = e.id AND s.kind = 'app'
+WHERE e.id = $1;

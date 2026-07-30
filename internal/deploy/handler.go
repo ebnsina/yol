@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/ebnsina/yol/internal/auth"
 	"github.com/ebnsina/yol/internal/httpx"
@@ -41,6 +42,116 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	route("GET "+base+"/{project}/environments/{environment}/variables", h.listVariables)
 	route("PUT "+base+"/{project}/environments/{environment}/variables/{name}", h.setVariable)
 	route("DELETE "+base+"/{project}/environments/{environment}/variables/{name}", h.deleteVariable)
+
+	route("POST "+base+"/{project}/environments/{environment}/deployments", h.deploy)
+	route("GET "+base+"/{project}/services/{service}/deployments", h.listDeployments)
+	route("GET "+base+"/{project}/deployments/{deployment}", h.showDeployment)
+	route("GET "+base+"/{project}/deployments/{deployment}/logs", h.deploymentLogs)
+	route("POST "+base+"/{project}/deployments/{deployment}/rollback", h.rollback)
+}
+
+// deploy builds and rolls out the head of the branch this environment follows.
+func (h *Handler) deploy(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	envID, ok := h.pathID(w, r, "environment", "environment")
+	if !ok {
+		return
+	}
+
+	deployment, err := h.projects.DeployEnvironment(r.Context(), m, session.User.ID, envID)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, map[string]any{"deployment": deployment})
+}
+
+func (h *Handler) listDeployments(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	serviceID, ok := h.pathID(w, r, "service", "service")
+	if !ok {
+		return
+	}
+
+	deployments, err := h.projects.ListDeployments(r.Context(), m, session.User.ID, serviceID)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"deployments": deployments})
+}
+
+func (h *Handler) showDeployment(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	deploymentID, ok := h.pathID(w, r, "deployment", "deployment")
+	if !ok {
+		return
+	}
+
+	deployment, err := h.projects.GetDeployment(r.Context(), m, session.User.ID, deploymentID)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"deployment": deployment})
+}
+
+// deploymentLogs returns what a deploy printed. A client follows one by asking again from the time
+// of the last line it holds, so nothing is sent twice and a long build is not re-read each time.
+func (h *Handler) deploymentLogs(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	deploymentID, ok := h.pathID(w, r, "deployment", "deployment")
+	if !ok {
+		return
+	}
+
+	var since time.Time
+	if given := r.URL.Query().Get("since"); given != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, given)
+		if err != nil {
+			httpx.Fail(w, r, httpx.InvalidInput("That is not a time we can read.").
+				WithField("since", "Use a full timestamp.").WithCause(err))
+			return
+		}
+		since = parsed
+	}
+
+	lines, err := h.projects.DeploymentLogs(r.Context(), m, session.User.ID, deploymentID, since)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"lines": lines})
+}
+
+func (h *Handler) rollback(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	deploymentID, ok := h.pathID(w, r, "deployment", "deployment")
+	if !ok {
+		return
+	}
+
+	deployment, err := h.projects.Rollback(r.Context(), m, session.User.ID, deploymentID)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, map[string]any{"deployment": deployment})
 }
 
 type createProjectRequest struct {

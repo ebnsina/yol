@@ -29,6 +29,9 @@ type Code interface {
 	InstallURL() string
 	// InstallationToken mints a credential for one installation, lasting an hour.
 	InstallationToken(ctx context.Context, installationID int64) (string, error)
+	// LatestCommit is what the head of a branch points at, so deploying by hand means the same
+	// thing as pushing to it.
+	LatestCommit(ctx context.Context, installationID, fullName, branch string) (string, error)
 }
 
 // Installation is what a client is shown about access we were granted.

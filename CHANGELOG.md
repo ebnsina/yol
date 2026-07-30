@@ -164,6 +164,14 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Deploying by hand means the same thing as pushing: the head of the branch the environment follows
+  is looked up and built, rather than whatever a client happened to send.
+- Rolling back runs an image already on the machine, so it takes seconds rather than a build. It is
+  recorded as a new attempt rather than reviving an old one, so the history reads as what happened,
+  and it is health-gated like any other rollout.
+- A deploy's history and output can be read: recent attempts per service, one attempt with the
+  reason it failed, and its output from a given moment onwards so a build can be followed without
+  reading the whole thing again each time.
 - Code comes from GitHub. Access is granted by installing an application, which is confirmed with
   GitHub rather than taken from whatever the browser came back with, and a project is pointed at one
   of the repositories that installation covers.
