@@ -35,6 +35,47 @@ func TestRouterConfigMapsHostnamesToContainers(t *testing.T) {
 	}
 }
 
+// An app with no domain yet is opened by the server's address, so a route with no hostname has to
+// answer whatever arrives.
+func TestRouterConfigServesRequestsArrivingByAddress(t *testing.T) {
+	spec := &proto.Spec{
+		Router: &proto.SpecRouter{AdminPort: 2019},
+		Routes: []proto.SpecRoute{{Container: "yol-abc123", Port: 3000}},
+	}
+
+	encoded, err := json.Marshal(buildRouterConfig(spec))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	config := string(encoded)
+
+	if strings.Contains(config, `"host"`) {
+		t.Errorf("the route matches on a hostname, so an address would reach nothing:\n%s", config)
+	}
+	if !strings.Contains(config, `"dial":"yol-abc123:3000"`) {
+		t.Errorf("the route does not reach the app:\n%s", config)
+	}
+}
+
+// A hostname must keep reaching its own app once one is added, so the route that answers anything
+// is only ever consulted after every named one.
+func TestRouterConfigPrefersHostnamesOverTheAddressRoute(t *testing.T) {
+	spec := &proto.Spec{
+		Router: &proto.SpecRouter{AdminPort: 2019},
+		Routes: []proto.SpecRoute{
+			{Container: "yol-fallback", Port: 3000},
+			{Host: "app.example.com", Container: "yol-named", Port: 8080},
+		},
+	}
+
+	encoded, _ := json.Marshal(buildRouterConfig(spec))
+	config := string(encoded)
+
+	if strings.Index(config, "yol-named") > strings.Index(config, "yol-fallback") {
+		t.Errorf("the route answering anything comes first, so hostnames never match:\n%s", config)
+	}
+}
+
 // Certificates must only ever be obtained after asking, which is what stops anyone pointing a
 // hostname at a customer's server and making it request one.
 func TestRouterConfigAlwaysAsksBeforeObtainingCertificates(t *testing.T) {

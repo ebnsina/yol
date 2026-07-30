@@ -164,6 +164,10 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- An app is reachable by the address of the server it was placed on before any domain has been
+  added to it, so a first deploy can be opened straight away. A hostname always wins over this
+  once one exists, and on a machine running several apps an address serves nothing, because it
+  does not say which of them was meant.
 
 ### Security
 
@@ -171,7 +175,8 @@ All notable changes to this project are recorded here, newest first. Format foll
   confirms somebody added and verified it. Without that, anyone could point a name they own at a
   customer's machine and make it request certificates on their behalf. The check refuses when it
   cannot reach the control plane: a certificate not obtained can be retried, while one obtained
-  for a name we do not control cannot be taken back.
+  for a name we do not control cannot be taken back. An address is refused outright, since a
+  certificate is only ever issued for a name.
 - The router's control interface is bound to the machine itself, so only the agent can change what
   the router serves, even though ports 80 and 443 are open to the world.
 

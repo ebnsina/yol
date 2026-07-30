@@ -2,7 +2,9 @@ package deploy
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/jackc/pgx/v5"
@@ -28,11 +30,28 @@ func (h *TLSHandler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/tls/allow", h.allow)
 }
 
+// isAddress reports whether what was asked about is an address rather than a name, in either
+// notation and whether or not it arrived wrapped in brackets or carrying a port.
+func isAddress(hostname string) bool {
+	if host, _, err := net.SplitHostPort(hostname); err == nil {
+		hostname = host
+	}
+	return net.ParseIP(strings.Trim(hostname, "[]")) != nil
+}
+
 // allow answers with 200 when a certificate may be obtained, and 403 otherwise. The router reads
 // only the status.
 func (h *TLSHandler) allow(w http.ResponseWriter, r *http.Request) {
 	hostname := r.URL.Query().Get("domain")
 	if hostname == "" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	// Not every app has a domain: until one is added it is reached by the server's address over
+	// plain HTTP. A certificate is only ever issued for a name, so an address is refused here
+	// rather than sent to a certificate authority that would reject it.
+	if isAddress(hostname) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}

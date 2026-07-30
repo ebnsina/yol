@@ -86,6 +86,18 @@ func TestCertificatesAreAllowedForOurOwnSubdomains(t *testing.T) {
 	}
 }
 
+// An app is reached by the server's address until a domain is added to it, and a certificate is
+// never issued for an address, so asking about one must be refused without consulting anything.
+func TestCertificatesAreRefusedForAddresses(t *testing.T) {
+	f := newFixture(t)
+
+	for _, address := range []string{"203.0.113.10", "203.0.113.10:443", "2001:db8::1", "[2001:db8::1]"} {
+		if code := f.askAbout(t, address); code != http.StatusForbidden {
+			t.Errorf("status = %d for the address %s, want 403", code, address)
+		}
+	}
+}
+
 func TestCertificatesAreRefusedWithNoHostname(t *testing.T) {
 	f := newFixture(t)
 

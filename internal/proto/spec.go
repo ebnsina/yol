@@ -109,6 +109,9 @@ type HealthGate struct {
 
 // SpecRoute maps a hostname to a container for the router. The router reaches the container by
 // name over the private network, so an app needs no port published to the outside world.
+//
+// An empty Host is the route for requests that arrive by the server's address, which is how an app
+// is reached before any domain has been added to it.
 type SpecRoute struct {
 	Host      string `json:"host"`
 	Container string `json:"container"`

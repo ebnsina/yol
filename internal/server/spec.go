@@ -78,6 +78,14 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 					Port:      port,
 				})
 			}
+
+			services, err := q.ListServicesForServer(ctx, &identity.ServerID)
+			if err != nil {
+				return err
+			}
+			if fallback := fallbackRoute(services); fallback != nil {
+				spec.Routes = append(spec.Routes, *fallback)
+			}
 		}
 
 		// Containers the user asked us to manage that were already on the machine. They carry no
@@ -106,6 +114,33 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 		return nil, err
 	}
 	return spec, nil
+}
+
+// fallbackRoute is where requests arriving by the server's address go, so an app can be opened
+// before a domain has been added to it.
+//
+// Only when the server runs a single app is this unambiguous. With several, an address says nothing
+// about which one was meant, so nothing is served by address and each is reached by its own name.
+func fallbackRoute(services []sqlc.ListServicesForServerRow) *proto.SpecRoute {
+	var only *sqlc.ListServicesForServerRow
+	for i, service := range services {
+		if service.Kind != sqlc.ServiceKindApp {
+			continue
+		}
+		if only != nil {
+			return nil
+		}
+		only = &services[i]
+	}
+	if only == nil {
+		return nil
+	}
+
+	port := 80
+	if only.HealthPort != nil {
+		port = int(*only.HealthPort)
+	}
+	return &proto.SpecRoute{Container: containerNameFor(only.ID), Port: port}
 }
 
 // containerNameFor is how a service's container is named on a machine. Derived from the service

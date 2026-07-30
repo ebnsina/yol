@@ -71,10 +71,14 @@ func (a *Agent) applyRouterConfig(ctx context.Context, spec *proto.Spec) error {
 
 // buildRouterConfig turns the specification into what the router expects.
 func buildRouterConfig(spec *proto.Spec) caddyConfig {
+	// A route with no hostname answers whatever arrives, so it is kept back and appended after the
+	// named ones. Requests reaching the server by its address have no hostname to match on, and
+	// this is what makes an app reachable before a domain has been added to it.
 	routes := make([]any, 0, len(spec.Routes))
+	var fallback []any
+
 	for _, route := range spec.Routes {
-		routes = append(routes, map[string]any{
-			"match": []any{map[string]any{"host": []string{route.Host}}},
+		handled := map[string]any{
 			"handle": []any{map[string]any{
 				"handler": "reverse_proxy",
 				// Reached by name over the private network, so the app needs nothing published.
@@ -83,8 +87,16 @@ func buildRouterConfig(spec *proto.Spec) caddyConfig {
 				}},
 			}},
 			"terminal": true,
-		})
+		}
+
+		if route.Host == "" {
+			fallback = append(fallback, handled)
+			continue
+		}
+		handled["match"] = []any{map[string]any{"host": []string{route.Host}}}
+		routes = append(routes, handled)
 	}
+	routes = append(routes, fallback...)
 
 	config := caddyConfig{
 		Admin: &caddyAdmin{Listen: "0.0.0.0:" + strconv.Itoa(spec.Router.AdminPort)},
