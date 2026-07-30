@@ -4,6 +4,10 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	// The API allows one origin, so a port that quietly moved would break every request with a
+	// cross-origin failure rather than saying the port was taken. Refusing to start says it plainly.
+	server: { port: 5173, strictPort: true },
+	preview: { port: 4173, strictPort: true },
 	plugins: [
 		tailwindcss(),
 		sveltekit({

@@ -9,6 +9,8 @@ export { default as Input } from './Input.svelte';
 export { default as Select } from './Select.svelte';
 export { default as Spinner } from './Spinner.svelte';
 export { default as Table } from './Table.svelte';
+export { default as Tabs } from './Tabs.svelte';
+export type { Tab } from './Tabs.svelte';
 export { default as TableRow } from './TableRow.svelte';
 export { default as Toaster } from './Toaster.svelte';
 export { toast } from './toast.svelte';

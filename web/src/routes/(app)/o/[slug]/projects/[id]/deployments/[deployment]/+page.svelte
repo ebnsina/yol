@@ -5,7 +5,11 @@
 	import { DEPLOYMENT_STATUS_LABELS, type Deployment, type DeploymentLine } from '$lib/api/types';
 	import { formatDateTime, formatRelative, formatTime } from '$lib/format';
 	import { Alert, Badge, Button, Card, Icon, Spinner, toast } from '$lib/ui';
-	import { ArrowTurnBackwardIcon } from '@hugeicons/core-free-icons';
+	import {
+		ArrowTurnBackwardIcon,
+		InformationCircleIcon,
+		TerminalIcon
+	} from '@hugeicons/core-free-icons';
 
 	let slug = $derived(page.params.slug!);
 	let projectId = $derived(page.params.id!);
@@ -138,6 +142,7 @@
 
 		<Card
 			title="Output"
+			icon={TerminalIcon}
 			description={running ? 'Following as it happens.' : 'What this deploy printed.'}
 		>
 			{#snippet actions()}
@@ -165,7 +170,7 @@
 			{/if}
 		</Card>
 
-		<Card title="Details">
+		<Card title="Details" icon={InformationCircleIcon}>
 			<dl class="grid gap-4 text-sm sm:grid-cols-2">
 				<div class="flex flex-col gap-1">
 					<dt class="text-xs text-ink-muted">Commit</dt>

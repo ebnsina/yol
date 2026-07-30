@@ -164,6 +164,10 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Each screen is a row of sections rather than one long scroll: a server shows what is running, what
+  was already there, and its history; an environment shows its deployments, its variables and its
+  settings. The chosen one is marked by a rule under it, which needs no colour to read as chosen.
+- Icons on every heading, tab and row, so a section is recognisable before it is read.
 - Project screens: a list, a project with its environments, and one deploy with its output. An
   environment shows which server it runs on and which branch it follows, both changeable in place,
   and says plainly when it has nowhere to run rather than offering a deploy that would fail.

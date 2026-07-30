@@ -5,7 +5,8 @@
 	import { projectsApi } from '$lib/api/projects';
 	import { serversApi } from '$lib/api/servers';
 	import type { Project, Server } from '$lib/api/types';
-	import { Alert, Button, Spinner, toast } from '$lib/ui';
+	import { Alert, Button, Icon, Spinner, toast } from '$lib/ui';
+	import { Delete02Icon, GithubIcon } from '@hugeicons/core-free-icons';
 	import EnvironmentCard from './EnvironmentCard.svelte';
 	import RepositoryCard from './RepositoryCard.svelte';
 
@@ -65,6 +66,12 @@
 					← Projects
 				</a>
 				<h1 class="text-xl font-semibold tracking-tight">{project.name}</h1>
+				{#if project.repository}
+					<p class="flex items-center gap-2 numeric text-xs text-ink-subtle">
+						<Icon icon={GithubIcon} size={12} />
+						{project.repository.fullName}
+					</p>
+				{/if}
 				<p class="text-sm text-ink-muted">
 					Deployed to servers you own. Pushing to a branch deploys the environment following it.
 				</p>
@@ -86,7 +93,10 @@
 		{#if project.permissions.manage}
 			<div class="flex items-center justify-between gap-4 border border-line px-5 py-4">
 				<div class="flex flex-col gap-1">
-					<span class="text-sm font-medium">Delete this project</span>
+					<span class="flex items-center gap-2 text-sm font-medium">
+						<Icon icon={Delete02Icon} size={14} class="text-ink-subtle" />
+						Delete this project
+					</span>
 					<span class="text-xs text-ink-muted">
 						Its containers are removed from your servers on the next pass. Volumes are left alone.
 					</span>

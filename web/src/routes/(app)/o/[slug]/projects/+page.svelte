@@ -145,20 +145,27 @@
 					href={`/o/${slug}/projects/${project.id}`}
 					class="flex items-center justify-between gap-4 border border-line px-5 py-4 not-first:border-t-0 hover:bg-surface-raised"
 				>
-					<div class="flex flex-col gap-1">
-						<span class="font-medium">{project.name}</span>
-						<span class="flex items-center gap-2 text-xs text-ink-muted">
-							{#if project.repository}
-								<Icon icon={GithubIcon} size={12} />
-								<span class="font-mono">{project.repository.fullName}</span>
-							{:else}
-								No repository connected yet
-							{/if}
+					<div class="flex items-center gap-3">
+						<span class="border border-line bg-surface-sunken p-2 text-ink-subtle">
+							<Icon icon={FolderLibraryIcon} size={16} />
 						</span>
+						<div class="flex flex-col gap-1">
+							<span class="font-medium">{project.name}</span>
+							<span class="flex items-center gap-2 text-xs text-ink-muted">
+								{#if project.repository}
+									<Icon icon={GithubIcon} size={12} />
+									<span class="font-mono">{project.repository.fullName}</span>
+								{:else}
+									No repository connected yet
+								{/if}
+							</span>
+						</div>
 					</div>
 
 					<div class="flex items-center gap-4">
-						<span class="text-xs text-ink-subtle">{formatRelative(project.createdAt)}</span>
+						<span class="text-right numeric text-xs text-ink-subtle">
+							{formatRelative(project.createdAt)}
+						</span>
 						<Icon icon={ArrowRight01Icon} size={16} class="text-ink-subtle" />
 					</div>
 				</a>

@@ -11,9 +11,15 @@
 	}
 
 	let { icon, title, description, action }: Props = $props();
+
+	// A bare line of text floating in the height of a full empty state reads as something broken
+	// rather than as nothing to show, so it takes only the room it needs.
+	let roomy = $derived(Boolean(icon || description || action));
 </script>
 
-<div class="flex flex-col items-center gap-3 px-6 py-14 text-center">
+<div
+	class={['flex flex-col items-center gap-3 px-6 text-center', roomy ? 'py-14' : 'py-6'].join(' ')}
+>
 	{#if icon}
 		<span class="border border-line bg-surface-sunken p-2.5 text-ink-subtle">
 			<Icon {icon} size={20} />

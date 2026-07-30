@@ -3,7 +3,7 @@
 	import { codeApi, projectsApi } from '$lib/api/projects';
 	import type { Installation, Project, Repository } from '$lib/api/types';
 	import { Alert, Badge, Button, Card, Field, Icon, Select, Spinner, toast } from '$lib/ui';
-	import { GithubIcon } from '@hugeicons/core-free-icons';
+	import { CodeIcon, GithubIcon } from '@hugeicons/core-free-icons';
 
 	interface Props {
 		slug: string;
@@ -90,7 +90,7 @@
 	});
 </script>
 
-<Card title="Code" description="Where this project builds from.">
+<Card title="Code" icon={CodeIcon} description="Where this project builds from.">
 	{#snippet actions()}
 		{#if project.repository && project.permissions.manage && !changing}
 			<Button size="sm" variant="secondary" onclick={() => (changing = true)}>Change</Button>

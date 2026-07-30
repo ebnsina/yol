@@ -22,9 +22,19 @@
 		Spinner,
 		Table,
 		TableRow,
+		Tabs,
 		toast
 	} from '$lib/ui';
-	import { Database01Icon, ServerStack01Icon } from '@hugeicons/core-free-icons';
+	import {
+		Clock01Icon,
+		ComputerIcon,
+		ContainerIcon,
+		CpuIcon,
+		Database01Icon,
+		GlobalIcon,
+		Layers01Icon,
+		ServerStack01Icon
+	} from '@hugeicons/core-free-icons';
 
 	let slug = $derived(page.params.slug!);
 	let serverId = $derived(page.params.id!);
@@ -34,6 +44,7 @@
 	let resources = $state<ServerResource[]>([]);
 	let loading = $state(true);
 	let loadError = $state<string | undefined>();
+	let section = $state('running');
 	let choosing = $state(false);
 
 	// Statuses where something is still happening, so the page keeps looking for progress.
@@ -205,99 +216,121 @@
 			</Card>
 		{/if}
 
+		<Tabs
+			bind:value={section}
+			label="Server sections"
+			tabs={[
+				{ value: 'running', label: 'Running', icon: ContainerIcon, count: ours.length },
+				{ value: 'existing', label: 'Already here', icon: Layers01Icon, count: theirs.length },
+				{ value: 'activity', label: 'Activity', icon: Clock01Icon, count: events.length }
+			]}
+		/>
+
 		<div class="grid gap-6 lg:grid-cols-3">
 			<div class="flex flex-col gap-6 lg:col-span-2">
 				<!-- What we run. Separate from what was already here, so ownership is never ambiguous. -->
-				<Card title="Managed by yol" description="Only these are ours to start, stop or remove.">
-					{#if ours.length === 0}
-						<EmptyState
-							icon={ServerStack01Icon}
-							title="Nothing here yet"
-							description="Anything we run on this server will appear here."
-						/>
-					{:else}
-						<Table columns={['Name', 'Image', 'Ports', 'Status']} caption="Managed resources">
-							{#each ours as item (item.id)}
-								<TableRow>
-									<td class="px-4 py-3 font-medium text-ink">{item.name}</td>
-									<td class="px-4 py-3 numeric text-xs text-ink-muted">{item.image ?? '—'}</td>
-									<td class="px-4 py-3 numeric text-xs">{item.ports.join(', ') || '—'}</td>
-									<td class="px-4 py-3 text-xs text-ink-muted">{item.status ?? '—'}</td>
-								</TableRow>
-							{/each}
-						</Table>
-					{/if}
-				</Card>
-
-				<Card
-					title="Already on this server"
-					description="Found here when we connected. We never change any of it."
-				>
-					{#if theirs.length === 0}
-						<EmptyState title="Nothing else is running here" />
-					{:else}
-						<Table columns={['Name', 'Image', 'Ports', 'Status']} caption="Existing containers">
-							{#each theirs as item (item.id)}
-								<TableRow>
-									<td class="px-4 py-3 font-medium text-ink">{item.name}</td>
-									<td class="px-4 py-3 numeric text-xs text-ink-muted">{item.image ?? '—'}</td>
-									<td class="px-4 py-3 numeric text-xs">{item.ports.join(', ') || '—'}</td>
-									<td class="px-4 py-3 text-xs text-ink-muted">{item.status ?? '—'}</td>
-								</TableRow>
-							{/each}
-						</Table>
-					{/if}
-				</Card>
-
-				{#if databases.length > 0}
+				{#if section === 'running'}
 					<Card
-						title="Databases we noticed"
-						description="Recognising these is a guess, so check before relying on it. We do not touch them."
+						title="Managed by yol"
+						icon={ContainerIcon}
+						description="Only these are ours to start, stop or remove."
 					>
-						<Table columns={['Kind', 'Version', 'Port', 'Where']} caption="Detected databases">
-							{#each databases as item (item.id)}
-								<TableRow>
-									<td class="px-4 py-3">
-										<span class="flex items-center gap-2 font-medium text-ink">
-											<Icon icon={Database01Icon} size={14} class="text-ink-subtle" />
-											{item.name}
-										</span>
-									</td>
-									<td class="px-4 py-3 numeric text-xs">{item.version ?? '—'}</td>
-									<td class="px-4 py-3 numeric text-xs">{item.ports.join(', ') || '—'}</td>
-									<td class="px-4 py-3 text-xs text-ink-muted"
-										>{item.externalId.split(':')[1] ?? '—'}</td
-									>
-								</TableRow>
-							{/each}
-						</Table>
+						{#if ours.length === 0}
+							<EmptyState
+								icon={ServerStack01Icon}
+								title="Nothing here yet"
+								description="Anything we run on this server will appear here."
+							/>
+						{:else}
+							<Table columns={['Name', 'Image', 'Ports', 'Status']} caption="Managed resources">
+								{#each ours as item (item.id)}
+									<TableRow>
+										<td class="px-4 py-3 font-medium text-ink">{item.name}</td>
+										<td class="px-4 py-3 numeric text-xs text-ink-muted">{item.image ?? '—'}</td>
+										<td class="px-4 py-3 numeric text-xs">{item.ports.join(', ') || '—'}</td>
+										<td class="px-4 py-3 text-xs text-ink-muted">{item.status ?? '—'}</td>
+									</TableRow>
+								{/each}
+							</Table>
+						{/if}
 					</Card>
 				{/if}
 
-				<Card title="What happened" description="Every step, newest last.">
-					{#if events.length === 0}
-						<EmptyState title="Nothing recorded yet" />
-					{:else}
-						<ol class="flex flex-col gap-2.5">
-							{#each events as event (event.id)}
-								<li class="flex gap-3 text-sm">
-									<time
-										class="shrink-0 numeric text-xs text-ink-subtle"
-										datetime={event.createdAt}
-										title={formatDateTime(event.createdAt)}
-									>
-										{formatRelative(event.createdAt)}
-									</time>
-									<span class={levelTone(event.level)}>{event.message}</span>
-								</li>
-							{/each}
-						</ol>
+				{#if section === 'existing'}
+					<Card
+						title="Already on this server"
+						icon={Layers01Icon}
+						description="Found here when we connected. We never change any of it."
+					>
+						{#if theirs.length === 0}
+							<EmptyState title="Nothing else is running here" />
+						{:else}
+							<Table columns={['Name', 'Image', 'Ports', 'Status']} caption="Existing containers">
+								{#each theirs as item (item.id)}
+									<TableRow>
+										<td class="px-4 py-3 font-medium text-ink">{item.name}</td>
+										<td class="px-4 py-3 numeric text-xs text-ink-muted">{item.image ?? '—'}</td>
+										<td class="px-4 py-3 numeric text-xs">{item.ports.join(', ') || '—'}</td>
+										<td class="px-4 py-3 text-xs text-ink-muted">{item.status ?? '—'}</td>
+									</TableRow>
+								{/each}
+							</Table>
+						{/if}
+					</Card>
+
+					{#if databases.length > 0}
+						<Card
+							title="Databases we noticed"
+							icon={Database01Icon}
+							description="Recognising these is a guess, so check before relying on it. We do not touch them."
+						>
+							<Table columns={['Kind', 'Version', 'Port', 'Where']} caption="Detected databases">
+								{#each databases as item (item.id)}
+									<TableRow>
+										<td class="px-4 py-3">
+											<span class="flex items-center gap-2 font-medium text-ink">
+												<Icon icon={Database01Icon} size={14} class="text-ink-subtle" />
+												{item.name}
+											</span>
+										</td>
+										<td class="px-4 py-3 numeric text-xs">{item.version ?? '—'}</td>
+										<td class="px-4 py-3 numeric text-xs">{item.ports.join(', ') || '—'}</td>
+										<td class="px-4 py-3 text-xs text-ink-muted"
+											>{item.externalId.split(':')[1] ?? '—'}</td
+										>
+									</TableRow>
+								{/each}
+							</Table>
+						</Card>
 					{/if}
-				</Card>
+				{/if}
+
+				{#if section === 'activity'}
+					<Card title="What happened" icon={Clock01Icon} description="Every step, newest last.">
+						{#if events.length === 0}
+							<EmptyState title="Nothing recorded yet" />
+						{:else}
+							<ol class="flex flex-col gap-2.5">
+								{#each events as event (event.id)}
+									<li class="flex items-baseline gap-4 text-sm">
+										<time
+											class="w-28 shrink-0 text-right numeric text-xs text-ink-subtle"
+											datetime={event.createdAt}
+											title={formatDateTime(event.createdAt)}
+										>
+											{formatRelative(event.createdAt)}
+										</time>
+										<span class={levelTone(event.level)}>{event.message}</span>
+									</li>
+								{/each}
+							</ol>
+						{/if}
+					</Card>
+				{/if}
 			</div>
 
 			<div class="flex flex-col gap-6">
-				<Card title="This machine">
+				<Card title="This machine" icon={ComputerIcon}>
 					<dl class="flex flex-col gap-2.5 text-sm">
 						{#each [['System', server.facts.osName ? `${server.facts.osName} ${server.facts.osVersion ?? ''}` : null], ['Architecture', server.facts.arch], ['Kernel', server.facts.kernel], ['Docker', server.facts.dockerVersion]] as [label, value] (label)}
 							<div class="flex justify-between gap-4">
@@ -319,7 +352,7 @@
 				</Card>
 
 				{#if ports.length > 0}
-					<Card title="Listening" description="What is using each port.">
+					<Card title="Listening" icon={GlobalIcon} description="What is using each port.">
 						<ul class="flex flex-col gap-1.5 text-sm">
 							{#each ports as item (item.id)}
 								<li class="flex items-baseline justify-between gap-3">
@@ -336,6 +369,7 @@
 				{#if activeServices.length > 0}
 					<Card
 						title="Running services"
+						icon={CpuIcon}
 						description={`${activeServices.length} active on this server.`}
 					>
 						<ul class="max-h-64 space-y-1 overflow-y-auto text-xs text-ink-muted">

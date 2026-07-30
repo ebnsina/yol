@@ -10,8 +10,32 @@
 		type Variable
 	} from '$lib/api/types';
 	import { formatBytes, formatRelative } from '$lib/format';
-	import { Alert, Badge, Button, Card, Field, Icon, Input, Select, Spinner, toast } from '$lib/ui';
-	import { Delete02Icon, RocketIcon } from '@hugeicons/core-free-icons';
+	import {
+		Alert,
+		Badge,
+		Button,
+		Card,
+		Field,
+		Icon,
+		Input,
+		Select,
+		Spinner,
+		Tabs,
+		toast
+	} from '$lib/ui';
+	import {
+		CheckmarkCircle01Icon,
+		CpuIcon,
+		Delete02Icon,
+		FlaskConicalIcon,
+		GlobalIcon,
+		HealthIcon,
+		InformationCircleIcon,
+		LockKeyIcon,
+		RocketIcon,
+		SlidersHorizontalIcon,
+		VariableIcon
+	} from '@hugeicons/core-free-icons';
 
 	interface Props {
 		slug: string;
@@ -51,7 +75,7 @@
 	let variableError = $state<string | undefined>();
 
 	let savingService = $state(false);
-	let showSettings = $state(false);
+	let section = $state('deployments');
 
 	// A version already serving is what a rollback goes back from, so it is worth naming.
 	let live = $derived(deployments?.find((d) => d.status === 'live'));
@@ -174,7 +198,10 @@
 	});
 </script>
 
-<Card title={environment.name}>
+<Card
+	title={environment.name}
+	icon={environment.name === 'production' ? GlobalIcon : FlaskConicalIcon}
+>
 	{#snippet actions()}
 		{#if project.permissions.deploy}
 			<Button size="sm" onclick={deploy} loading={deploying} disabled={!environment.serverId}>
@@ -191,205 +218,220 @@
 			</Alert>
 		{/if}
 
-		<div class="grid gap-4 sm:grid-cols-2">
-			<Field label="Server" id={`${environment.id}-server`} hint="Where this environment runs.">
-				{#snippet children({ id })}
-					<Select
-						{id}
-						bind:value={serverId}
-						onchange={changeServer}
-						disabled={!project.permissions.manage}
-						options={[
-							{ value: '', label: 'Not chosen yet' },
-							...servers.map((server) => ({
-								value: server.id,
-								label: `${server.name} · ${server.host}`
-							}))
-						]}
-					/>
-				{/snippet}
-			</Field>
+		<Tabs
+			bind:value={section}
+			label={`${environment.name} sections`}
+			tabs={[
+				{
+					value: 'deployments',
+					label: 'Deployments',
+					icon: RocketIcon,
+					count: deployments?.length
+				},
+				{ value: 'variables', label: 'Variables', icon: VariableIcon, count: variables?.length },
+				{ value: 'settings', label: 'Settings', icon: SlidersHorizontalIcon }
+			]}
+		/>
 
-			<Field
-				label="Branch"
-				id={`${environment.id}-branch`}
-				hint="Pushing here deploys this environment."
-			>
-				{#snippet children({ id })}
-					<Input
-						{id}
-						bind:value={branch}
-						onfocus={() => (editing = true)}
-						onblur={changeBranch}
-						disabled={!project.permissions.manage}
-						mono
-					/>
-				{/snippet}
-			</Field>
-		</div>
+		{#if section === 'settings'}
+			<div class="grid gap-4 sm:grid-cols-2">
+				<Field label="Server" id={`${environment.id}-server`} hint="Where this environment runs.">
+					{#snippet children({ id })}
+						<Select
+							{id}
+							bind:value={serverId}
+							onchange={changeServer}
+							disabled={!project.permissions.manage}
+							options={[
+								{ value: '', label: 'Not chosen yet' },
+								...servers.map((server) => ({
+									value: server.id,
+									label: `${server.name} · ${server.host}`
+								}))
+							]}
+						/>
+					{/snippet}
+				</Field>
 
-		<!-- Deployments -->
-		<div class="flex flex-col gap-2">
-			<div class="flex items-center justify-between">
-				<h3 class="text-xs font-semibold tracking-wide text-ink-muted uppercase">Deployments</h3>
+				<Field
+					label="Branch"
+					id={`${environment.id}-branch`}
+					hint="Pushing here deploys this environment."
+				>
+					{#snippet children({ id })}
+						<Input
+							{id}
+							bind:value={branch}
+							onfocus={() => (editing = true)}
+							onblur={changeBranch}
+							disabled={!project.permissions.manage}
+							mono
+						/>
+					{/snippet}
+				</Field>
+			</div>
+		{/if}
+
+		{#if section === 'deployments'}
+			<div class="flex flex-col gap-3">
 				{#if app}
-					<span class="text-xs text-ink-subtle">
+					<div class="flex items-center gap-2 text-xs text-ink-muted">
+						<Icon icon={live ? CheckmarkCircle01Icon : InformationCircleIcon} size={13} />
 						{#if live}
-							Serving {live.commitSha?.slice(0, 7) ?? 'a version'}
+							Serving <span class="numeric">{live.commitSha?.slice(0, 7) ?? 'a version'}</span>
 						{:else}
 							Nothing serving yet
 						{/if}
-					</span>
+					</div>
+				{/if}
+
+				{#if !deployments}
+					<div class="py-4"><Spinner /></div>
+				{:else if deployments.length === 0}
+					<p class="text-sm text-ink-muted">
+						Nothing deployed yet. Connect a repository and press deploy.
+					</p>
+				{:else}
+					<div class="flex flex-col border border-line">
+						{#each deployments.slice(0, 5) as deployment (deployment.id)}
+							<a
+								href={`/o/${slug}/projects/${project.id}/deployments/${deployment.id}`}
+								class="flex items-center justify-between gap-3 px-4 py-3 text-sm not-first:border-t not-first:border-line hover:bg-surface-raised"
+							>
+								<span class="flex items-center gap-3">
+									<Badge tone={statusTone(deployment.status)}>
+										{DEPLOYMENT_STATUS_LABELS[deployment.status]}
+									</Badge>
+									<span class="font-mono text-xs">
+										{deployment.commitSha?.slice(0, 7) ?? '—'}
+									</span>
+								</span>
+								<span class="text-xs text-ink-subtle">{formatRelative(deployment.createdAt)}</span>
+							</a>
+						{/each}
+					</div>
 				{/if}
 			</div>
-
-			{#if !deployments}
-				<div class="py-4"><Spinner /></div>
-			{:else if deployments.length === 0}
-				<p class="text-sm text-ink-muted">
-					Nothing deployed yet. Connect a repository and press deploy.
-				</p>
-			{:else}
-				<div class="flex flex-col border border-line">
-					{#each deployments.slice(0, 5) as deployment (deployment.id)}
-						<a
-							href={`/o/${slug}/projects/${project.id}/deployments/${deployment.id}`}
-							class="flex items-center justify-between gap-3 px-4 py-3 text-sm not-first:border-t not-first:border-line hover:bg-surface-raised"
-						>
-							<span class="flex items-center gap-3">
-								<Badge tone={statusTone(deployment.status)}>
-									{DEPLOYMENT_STATUS_LABELS[deployment.status]}
-								</Badge>
-								<span class="font-mono text-xs">
-									{deployment.commitSha?.slice(0, 7) ?? '—'}
-								</span>
-							</span>
-							<span class="text-xs text-ink-subtle">{formatRelative(deployment.createdAt)}</span>
-						</a>
-					{/each}
-				</div>
-			{/if}
-		</div>
+		{/if}
 
 		<!-- Variables. Values are write-only: the API never sends one back. -->
-		<div class="flex flex-col gap-2">
-			<h3 class="text-xs font-semibold tracking-wide text-ink-muted uppercase">Variables</h3>
-
-			{#if variables?.length}
-				<div class="flex flex-col border border-line">
-					{#each variables as variable (variable.name)}
-						<div
-							class="flex items-center justify-between gap-3 px-4 py-2.5 text-sm not-first:border-t not-first:border-line"
-						>
-							<span class="font-mono text-xs">{variable.name}</span>
-							<span class="flex items-center gap-3">
-								<span class="text-xs text-ink-subtle">
-									changed {formatRelative(variable.updatedAt)}
+		{#if section === 'variables'}
+			<div class="flex flex-col gap-3">
+				{#if variables?.length}
+					<div class="flex flex-col border border-line">
+						{#each variables as variable (variable.name)}
+							<div
+								class="flex items-center justify-between gap-3 px-4 py-2.5 text-sm not-first:border-t not-first:border-line"
+							>
+								<span class="font-mono text-xs">{variable.name}</span>
+								<span class="flex items-center gap-3">
+									<span class="text-xs text-ink-subtle">
+										changed {formatRelative(variable.updatedAt)}
+									</span>
+									{#if project.permissions.deploy}
+										<button
+											type="button"
+											onclick={() => removeVariable(variable.name)}
+											class="text-ink-subtle hover:text-danger"
+											aria-label={`Remove ${variable.name}`}
+										>
+											<Icon icon={Delete02Icon} size={14} />
+										</button>
+									{/if}
 								</span>
-								{#if project.permissions.deploy}
-									<button
-										type="button"
-										onclick={() => removeVariable(variable.name)}
-										class="text-ink-subtle hover:text-danger"
-										aria-label={`Remove ${variable.name}`}
-									>
-										<Icon icon={Delete02Icon} size={14} />
-									</button>
-								{/if}
-							</span>
-						</div>
-					{/each}
-				</div>
-			{/if}
-
-			{#if project.permissions.deploy}
-				<form onsubmit={saveVariable} class="flex flex-col gap-3 sm:flex-row sm:items-start">
-					<div class="flex-1">
-						<Field label="Name" id={`${environment.id}-var-name`} error={variableError}>
-							{#snippet children({ id, describedBy, invalid })}
-								<Input
-									{id}
-									{describedBy}
-									{invalid}
-									bind:value={variableName}
-									placeholder="DATABASE_URL"
-									mono
-								/>
-							{/snippet}
-						</Field>
-					</div>
-					<div class="flex-1">
-						<Field label="Value" id={`${environment.id}-var-value`}>
-							{#snippet children({ id })}
-								<Input
-									{id}
-									bind:value={variableValue}
-									type="password"
-									placeholder="Never shown again"
-								/>
-							{/snippet}
-						</Field>
-					</div>
-					<Button type="submit" variant="secondary" loading={savingVariable}>Save</Button>
-				</form>
-				<p class="text-xs text-ink-subtle">
-					Values are stored encrypted and never shown again. Your next deploy carries them.
-				</p>
-			{/if}
-		</div>
-
-		<!-- How this app is checked before traffic moves to it. -->
-		{#if app && project.permissions.manage}
-			<div class="flex flex-col gap-2">
-				<button
-					type="button"
-					onclick={() => (showSettings = !showSettings)}
-					class="self-start text-xs text-ink-subtle hover:text-ink"
-				>
-					{showSettings ? 'Hide' : 'Show'} health check and limits
-				</button>
-
-				{#if showSettings}
-					<div class="grid gap-4 sm:grid-cols-2">
-						<Field
-							label="Health path"
-							id={`${environment.id}-health-path`}
-							hint="Asked for before traffic moves to a new version."
-						>
-							{#snippet children({ id })}
-								<Input
-									{id}
-									bind:value={healthPath}
-									onfocus={() => (editing = true)}
-									placeholder="/healthz"
-									mono
-								/>
-							{/snippet}
-						</Field>
-						<Field
-							label="Port"
-							id={`${environment.id}-health-port`}
-							hint="Where your app listens inside its container."
-						>
-							{#snippet children({ id })}
-								<Input
-									{id}
-									bind:value={healthPort}
-									onfocus={() => (editing = true)}
-									placeholder="3000"
-									inputmode="numeric"
-									mono
-								/>
-							{/snippet}
-						</Field>
-					</div>
-					<div class="flex items-center gap-3">
-						<Button variant="secondary" onclick={saveService} loading={savingService}>Save</Button>
-						<span class="text-xs text-ink-subtle">
-							Memory limit {formatBytes(app.memoryLimitBytes)}
-						</span>
+							</div>
+						{/each}
 					</div>
 				{/if}
+
+				{#if project.permissions.deploy}
+					<form onsubmit={saveVariable} class="flex flex-col gap-3 sm:flex-row sm:items-end">
+						<div class="flex-1">
+							<Field label="Name" id={`${environment.id}-var-name`} error={variableError}>
+								{#snippet children({ id, describedBy, invalid })}
+									<Input
+										{id}
+										{describedBy}
+										{invalid}
+										bind:value={variableName}
+										placeholder="DATABASE_URL"
+										mono
+									/>
+								{/snippet}
+							</Field>
+						</div>
+						<div class="flex-1">
+							<Field label="Value" id={`${environment.id}-var-value`}>
+								{#snippet children({ id })}
+									<Input
+										{id}
+										bind:value={variableValue}
+										type="password"
+										placeholder="Never shown again"
+									/>
+								{/snippet}
+							</Field>
+						</div>
+						<Button type="submit" variant="secondary" loading={savingVariable}>Save</Button>
+					</form>
+					<p class="flex items-center gap-2 text-xs text-ink-subtle">
+						<Icon icon={LockKeyIcon} size={13} />
+						Stored encrypted and never shown again. Your next deploy carries them.
+					</p>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- How this app is checked before traffic moves to it. -->
+		{#if section === 'settings' && app && project.permissions.manage}
+			<div class="flex flex-col gap-3 border-t border-line pt-5">
+				<h3
+					class="flex items-center gap-2 text-xs font-semibold tracking-wide text-ink-muted uppercase"
+				>
+					<Icon icon={HealthIcon} size={13} />
+					Health check
+				</h3>
+
+				<div class="grid gap-4 sm:grid-cols-2">
+					<Field
+						label="Health path"
+						id={`${environment.id}-health-path`}
+						hint="Asked for before traffic moves to a new version."
+					>
+						{#snippet children({ id })}
+							<Input
+								{id}
+								bind:value={healthPath}
+								onfocus={() => (editing = true)}
+								placeholder="/healthz"
+								mono
+							/>
+						{/snippet}
+					</Field>
+					<Field
+						label="Port"
+						id={`${environment.id}-health-port`}
+						hint="Where your app listens inside its container."
+					>
+						{#snippet children({ id })}
+							<Input
+								{id}
+								bind:value={healthPort}
+								onfocus={() => (editing = true)}
+								placeholder="3000"
+								inputmode="numeric"
+								mono
+							/>
+						{/snippet}
+					</Field>
+				</div>
+				<div class="flex items-center gap-3">
+					<Button variant="secondary" onclick={saveService} loading={savingService}>Save</Button>
+					<span class="flex items-center gap-2 text-xs text-ink-subtle">
+						<Icon icon={CpuIcon} size={13} />
+						Memory limit {formatBytes(app.memoryLimitBytes)}
+					</span>
+				</div>
 			</div>
 		{/if}
 	</div>
