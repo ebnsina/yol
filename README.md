@@ -40,6 +40,12 @@ make vps-status
 
 See `dev/README.md` for details.
 
+```sh
+make test        # unit and integration tests
+make test-e2e    # drives the API end to end against a fresh database
+make lint
+```
+
 Run `make help` to list every target.
 
 ## License

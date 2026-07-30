@@ -109,6 +109,10 @@ test: ## Run Go tests (database tests skip unless the local database is up)
 	YOL_TEST_OWNER_DATABASE_URL="$(DB_URL)" \
 	go test ./...
 
+.PHONY: test-e2e
+test-e2e: ## Drive the API end to end (rebuilds the database, starts the API)
+	./dev/e2e.sh -v
+
 .PHONY: lint
 lint: ## Vet and format check
 	go vet ./...

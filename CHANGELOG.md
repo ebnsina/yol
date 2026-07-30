@@ -71,6 +71,12 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Development harness with three stand-in servers, each running Ubuntu with systemd, an SSH
   daemon and Docker, so the setup path used locally is the same one that will run on a real
   machine. Started with `make vps-up`; see `dev/README.md`.
+- End-to-end checks that drive the API the way any client would, run with `make test-e2e`
+  against a freshly rebuilt database. They assert the properties that matter rather than the
+  shape of the code: that a wrong password and an unknown account are indistinguishable, that
+  someone outside an organization is told it was not found rather than that they lack access,
+  that a forwarded invitation cannot be redeemed by the wrong person, and that no technical
+  detail appears in any error a client receives.
 
 ### Security
 
