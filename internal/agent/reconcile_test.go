@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,4 +168,17 @@ func keys(m map[string]proto.Container) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+// Docker often ends a failure with a suggestion to read its help, which tells nobody anything. The
+// line that says what actually happened is what gets reported.
+func TestAFailureReportsWhatWentWrongRatherThanWhereToReadAboutIt(t *testing.T) {
+	output := `docker: Error response from daemon: Conflict. The container name "/yol-abc" is already in use.
+
+Run 'docker run --help' for more information`
+
+	got := lastLine(output)
+	if !strings.Contains(got, "already in use") {
+		t.Errorf("reported %q, want the reason it failed", got)
+	}
 }

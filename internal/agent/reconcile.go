@@ -472,8 +472,18 @@ func (a *Agent) reconcileOnce(ctx context.Context, report bool) {
 	}
 }
 
+// lastLine is what to report when a command fails. Docker often ends with a suggestion to read its
+// help, which explains nothing, so the line that actually says what went wrong is preferred.
 func lastLine(output string) string {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
+
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "Run '") || strings.HasPrefix(line, "See '") {
+			continue
+		}
+		return line
+	}
 	return strings.TrimSpace(lines[len(lines)-1])
 }
 
