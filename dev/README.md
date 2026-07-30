@@ -43,6 +43,14 @@ easier to design for if it can be run today.
   worth keeping in mind: it is exactly the gap the agent's reconcile loop closes, and the
   harness reproduces it faithfully rather than hiding it.
 
+## Testing against a server already in use
+
+The interesting case is a server that is not fresh. `make vps-messy` gives vps-2 their own
+nginx on ports 80 and 443, a hand-run Postgres, a container that has since died, and a stray
+volume. `make test-live` then checks that a survey reports all of it, blames the right
+container for the port conflict, treats none of it as ours, and — most importantly — changes
+nothing at all, verified by comparing the machine before and after.
+
 ## Notes
 
 These containers are `privileged` with the host cgroup namespace, which systemd and Docker

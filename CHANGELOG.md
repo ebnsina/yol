@@ -87,6 +87,16 @@ All notable changes to this project are recorded here, newest first. Format foll
   so the two can be upgraded in any order. Agents report what they are capable of rather than
   relying on version comparisons, unknown fields and message types are ignored instead of
   causing a failure, and watch-only is carried in the contract so the agent itself enforces it.
+- Connecting to a server and surveying it without changing anything: what it is, what is
+  listening and which process holds each port, which containers, images and volumes exist,
+  which services are running, and what looks like a database. A server already in use is
+  reported as it actually is rather than presented as empty.
+- Where a port is held by a container, the container is named rather than the proxy process,
+  because "the container called their-nginx" can be acted on and "docker-proxy" cannot.
+- Detected databases carry how confident the detection is, since recognising one is a guess by
+  nature. Nothing found this way is ever acted on automatically.
+- Only Ubuntu and Debian are accepted for now, and an unsupported server is told so plainly
+  rather than half-working.
 
 ### Security
 
