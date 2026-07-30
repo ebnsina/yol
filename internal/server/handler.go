@@ -32,6 +32,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	route("POST /v1/organizations/{slug}/servers", h.connect)
 	route("GET /v1/organizations/{slug}/servers/{id}", h.show)
 	route("DELETE /v1/organizations/{slug}/servers/{id}", h.delete)
+	route("PATCH /v1/organizations/{slug}/servers/{id}/routing", h.chooseRouting)
 	route("GET /v1/organizations/{slug}/servers/{id}/events", h.events)
 	route("GET /v1/organizations/{slug}/servers/{id}/resources", h.resources)
 }
@@ -117,6 +118,33 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.NoContent(w)
+}
+
+type routingRequest struct {
+	RoutingMode Routing `json:"routingMode"`
+}
+
+func (h *Handler) chooseRouting(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	var req routingRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+
+	updated, err := h.svc.ChooseRouting(r.Context(), m, session.User.ID, id, req.RoutingMode)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"server": updated})
 }
 
 // events returns progress since a moment, so a client watching a setup can poll for what is

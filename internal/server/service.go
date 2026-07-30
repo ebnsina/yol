@@ -225,8 +225,70 @@ func (s *Service) Delete(ctx context.Context, m *org.Membership, userID, serverI
 	})
 }
 
-// Event is a step in a server's setup.
+// Routing is how web traffic reaches apps on a server.
+type Routing string
+
+const (
+	// RoutingTakeover means we handle ports 80 and 443 ourselves, with certificates.
+	RoutingTakeover Routing = "takeover"
+	// RoutingBehindProxy means their web server keeps those ports and we serve on others.
+	RoutingBehindProxy Routing = "behind_proxy"
+)
+
+// ChooseRouting answers the question the survey asked. Recorded before anything is
+// installed, because the answer decides whether their web server keeps its ports.
+func (s *Service) ChooseRouting(ctx context.Context, m *org.Membership, userID, serverID uuid.UUID, choice Routing) (*Server, error) {
+	if err := m.Role.Require(org.CanManageServers); err != nil {
+		return nil, err
+	}
+	if choice != RoutingTakeover && choice != RoutingBehindProxy {
+		return nil, httpx.InvalidInput("Please choose how web traffic should reach your apps.").
+			WithField("routingMode", "Choose one of the available options.")
+	}
+
+	var out *Server
+	err := s.pool.InOrgAsUser(ctx, m.OrgID, userID, func(tx pgx.Tx) error {
+		q := sqlc.New(tx)
+		row, err := q.GetServer(ctx, serverID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return httpx.NotFound("server").WithCause(err)
+			}
+			return httpx.Internal(err)
+		}
+		if row.Mode == sqlc.ServerModeWatch {
+			return httpx.Conflict("This server is being watched only, so nothing is being set up on it.")
+		}
+
+		mode := sqlc.RoutingMode(choice)
+		if err := q.SetServerRoutingMode(ctx, sqlc.SetServerRoutingModeParams{
+			ID: serverID, RoutingMode: &mode,
+		}); err != nil {
+			return httpx.Internal(err)
+		}
+
+		message := "Your apps will be served on ports we choose, so your existing web server keeps ports 80 and 443."
+		if choice == RoutingTakeover {
+			message = "We will handle ports 80 and 443 on this server, including certificates."
+		}
+		if err := recordEvent(ctx, q, m.OrgID, serverID, "routing", message, "info"); err != nil {
+			return err
+		}
+
+		row.RoutingMode = &mode
+		out = toServer(row, m.Role)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Event is a step in a server's setup. It carries its own identifier because several are
+// often written in one transaction and therefore share a timestamp exactly.
 type Event struct {
+	ID        uuid.UUID `json:"id"`
 	Step      string    `json:"step"`
 	Message   string    `json:"message"`
 	Level     string    `json:"level"`
@@ -251,6 +313,7 @@ func (s *Service) Events(ctx context.Context, m *org.Membership, userID, serverI
 		}
 		for _, row := range rows {
 			out = append(out, Event{
+				ID:        row.ID,
 				Step:      row.Step,
 				Message:   row.Message,
 				Level:     row.Level,

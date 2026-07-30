@@ -68,3 +68,73 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
 	member: 'Deploy and view logs.',
 	viewer: 'View logs only.'
 };
+
+export type ServerMode = 'managed' | 'watch';
+
+export type ServerStatus =
+	'pending' | 'surveying' | 'awaiting_choice' | 'installing' | 'online' | 'offline' | 'failed';
+
+export type RoutingMode = 'takeover' | 'behind_proxy';
+
+export interface ServerFacts {
+	osName: string | null;
+	osVersion: string | null;
+	arch: string | null;
+	kernel: string | null;
+	cpuCount: number | null;
+	memoryBytes: number | null;
+	dockerVersion: string | null;
+}
+
+export interface Server {
+	id: string;
+	name: string;
+	host: string;
+	sshPort: number;
+	sshUser: string;
+	mode: ServerMode;
+	status: ServerStatus;
+	routingMode: RoutingMode | null;
+	facts: ServerFacts;
+	permissions: { manage: boolean; delete: boolean };
+	failureReason: string | null;
+	agentVersion: string | null;
+	agentLastSeenAt: string | null;
+	createdAt: string;
+}
+
+export interface ServerEvent {
+	id: string;
+	step: string;
+	message: string;
+	level: 'info' | 'warning' | 'error';
+	createdAt: string;
+}
+
+export type ResourceKind = 'container' | 'image' | 'volume' | 'service' | 'port' | 'database';
+
+export interface ServerResource {
+	id: string;
+	kind: ResourceKind;
+	externalId: string;
+	name: string;
+	status: string | null;
+	image: string | null;
+	version: string | null;
+	ports: number[];
+	sizeBytes: number | null;
+	managed: boolean;
+	adoptedAt: string | null;
+	lastSeenAt: string;
+}
+
+/** Written for someone reading a dashboard, not for a log file. */
+export const SERVER_STATUS_LABELS: Record<ServerStatus, string> = {
+	pending: 'Waiting',
+	surveying: 'Looking at this server',
+	awaiting_choice: 'Needs a decision',
+	installing: 'Setting up',
+	online: 'Connected',
+	offline: 'Not responding',
+	failed: 'Setup did not finish'
+};

@@ -106,6 +106,12 @@ All notable changes to this project are recorded here, newest first. Format foll
   half-finished setup. Job records hold identifiers only and never credentials.
 - Disconnecting a server forgets it here and changes nothing on the machine, so leaving costs
   a customer nothing they were running.
+- Screens for connecting a server and seeing what is on it. Setup progress appears step by
+  step while it runs. What we manage and what was already there are listed separately, so
+  ownership is never ambiguous, alongside detected databases, listening ports and running
+  services.
+- The port question is asked in plain language with the real consequence of each answer
+  spelled out, and once answered the choice is shown rather than asked again.
 
 ### Security
 

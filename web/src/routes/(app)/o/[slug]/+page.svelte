@@ -28,7 +28,12 @@
 		TableRow,
 		toast
 	} from '$lib/ui';
-	import { Copy01Icon, MailAtSign01Icon, UserGroupIcon } from '@hugeicons/core-free-icons';
+	import {
+		Copy01Icon,
+		MailAtSign01Icon,
+		ServerStack01Icon,
+		UserGroupIcon
+	} from '@hugeicons/core-free-icons';
 
 	let slug = $derived(page.params.slug!);
 
@@ -136,7 +141,15 @@
 				</a>
 				<h1 class="text-xl font-semibold tracking-tight">{organization.name}</h1>
 			</div>
-			<Badge tone={organization.role === 'owner' ? 'strong' : 'neutral'}>{organization.role}</Badge>
+			<div class="flex items-center gap-2">
+				<Button href={`/o/${slug}/servers`} size="sm" variant="secondary">
+					<Icon icon={ServerStack01Icon} size={14} />
+					Servers
+				</Button>
+				<Badge tone={organization.role === 'owner' ? 'strong' : 'neutral'}
+					>{organization.role}</Badge
+				>
+			</div>
 		</header>
 
 		{#if lastInviteUrl}
