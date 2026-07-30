@@ -12,7 +12,7 @@ func validAPIEnv() map[string]string {
 		"YOL_ENV":              "development",
 		"YOL_HTTP_ADDR":        ":8080",
 		"YOL_PUBLIC_URL":       "http://localhost:8080",
-		"YOL_DATABASE_URL":     "postgres://yol:yol@localhost:5433/yol?sslmode=disable",
+		"YOL_DATABASE_URL":     "postgres://yol:yol@localhost:5442/yol?sslmode=disable",
 		"YOL_SESSION_SECRET":   strings.Repeat("ab", 32),
 		"YOL_SECRETS_KEY":      strings.Repeat("cd", 32),
 		"YOL_AGENT_SPEC_KEY":   strings.Repeat("ef", 32),

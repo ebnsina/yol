@@ -8,6 +8,7 @@ import (
 
 	"github.com/ebnsina/yol/internal/api"
 	"github.com/ebnsina/yol/internal/config"
+	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
 )
 
@@ -15,9 +16,17 @@ func main() {
 	cfg := config.MustLoadAPI()
 	setupLogging(cfg.Env)
 
-	handler := api.New(api.Deps{Config: cfg})
+	ctx := context.Background()
+	pool, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("cannot connect to the database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
 
-	if err := httpx.Serve(context.Background(), cfg.HTTPAddr, handler, cfg.ShutdownTimeout); err != nil {
+	handler := api.New(api.Deps{Config: cfg, DB: pool})
+
+	if err := httpx.Serve(ctx, cfg.HTTPAddr, handler, cfg.ShutdownTimeout); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}

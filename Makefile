@@ -1,7 +1,9 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-DB_URL ?= postgres://yol:yol@localhost:5433/yol?sslmode=disable
+# Migrations run as the owning role; the application connects as yol_app so that row
+# level security applies. Never point the application at this URL.
+DB_URL ?= postgres://yol:yol@localhost:5442/yol?sslmode=disable
 MIGRATIONS := internal/db/migrations
 
 .PHONY: help
@@ -16,6 +18,13 @@ dev-db: ## Start local Postgres
 .PHONY: dev-db-stop
 dev-db-stop: ## Stop local Postgres
 	docker compose -f dev/compose.yaml down
+
+.PHONY: db-reset
+db-reset: ## Destroy and rebuild the local database from scratch
+	docker compose -f dev/compose.yaml down -v
+	docker compose -f dev/compose.yaml up -d postgres
+	until docker compose -f dev/compose.yaml exec -T postgres pg_isready -U yol -d yol >/dev/null 2>&1; do sleep 1; done
+	$(MAKE) migrate-up
 
 .PHONY: migrate-up
 migrate-up: ## Apply all migrations
@@ -51,7 +60,9 @@ web: ## Run the frontend dev server
 	cd web && pnpm dev
 
 .PHONY: test
-test: ## Run Go tests
+test: ## Run Go tests (database tests skip unless the local database is up)
+	YOL_TEST_DATABASE_URL="postgres://yol_app:yol_app@localhost:5442/yol?sslmode=disable" \
+	YOL_TEST_OWNER_DATABASE_URL="$(DB_URL)" \
 	go test ./...
 
 .PHONY: lint

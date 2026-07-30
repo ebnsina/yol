@@ -1,0 +1,26 @@
+version: "2"
+sql:
+  # Only table-defining migrations are listed. Role and grant migrations are omitted
+  # because sqlc reads this as a schema, not as a migration history.
+  - schema:
+      - internal/db/migrations/00001_identity.sql
+    queries: internal/db/queries
+    engine: postgresql
+    gen:
+      go:
+        package: sqlc
+        out: internal/db/sqlc
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_json_tags: false
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+              pointer: true

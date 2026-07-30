@@ -1,0 +1,22 @@
+name: yol-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5442:5432"
+    environment:
+      POSTGRES_USER: yol
+      POSTGRES_PASSWORD: yol
+      POSTGRES_DB: yol
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yol -d yol"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres-data:
