@@ -51,6 +51,18 @@ volume. `make test-live` then checks that a survey reports all of it, blames the
 container for the port conflict, treats none of it as ours, and — most importantly — changes
 nothing at all, verified by comparing the machine before and after.
 
+## Checking the promises
+
+`make verify-phase1` runs the guarantees this product makes about a customer's server against
+real machines from this harness. It asserts, among others, that looking at a server changes
+nothing on it, that a server already in use is reported as it is, that their containers survive
+setup and reconciliation, that a container carrying our label is removed while theirs are not,
+that logs stream from a container we did not create, and that a watched server has nothing
+whatsoever created on it — compared byte for byte before and after.
+
+It rebuilds the database and reinstalls the agent on all three stand-in servers, so it takes a
+few minutes and should not be run against anything you care about.
+
 ## The control plane's address
 
 `YOL_PUBLIC_URL` is written into the agent's service file during setup, so it has to be an

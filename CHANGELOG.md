@@ -143,6 +143,10 @@ All notable changes to this project are recorded here, newest first. Format foll
   one container cannot take a whole server down.
 - Where a customer's own web server keeps ports 80 and 443, no router is run and their sites are
   left entirely alone.
+- A verification suite that checks the promises made about a customer's server against real
+  machines: that looking changes nothing, that their work survives, that only what we created is
+  ever removed, that logs stream from containers we did not create, and that a watched server has
+  nothing created on it at all. Run with `make verify-phase1`.
 
 ### Security
 

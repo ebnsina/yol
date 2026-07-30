@@ -120,14 +120,19 @@ vps-messy: ## Make vps-2 look like a server already in use, for testing discover
 		docker rm -f their-nginx their-postgres old-worker >/dev/null 2>&1 || true; \
 		docker run -d --name their-nginx --restart=unless-stopped -p 80:80 -p 443:443 nginx:alpine >/dev/null; \
 		docker run -d --name their-postgres --restart=unless-stopped -e POSTGRES_PASSWORD=theirs -p 5432:5432 postgres:16-alpine >/dev/null; \
-		docker run -d --name old-worker alpine:latest sh -c "sleep 2" >/dev/null; \
+		docker run -d --name old-worker alpine:latest sh -c "sleep 1" >/dev/null; \
 		docker volume create their-data >/dev/null; \
+		while [ "$$(docker inspect -f "{{.State.Status}}" old-worker)" = "running" ]; do sleep 1; done; \
 		echo "vps-2 now has their nginx on 80/443, a hand-run postgres, a dead worker and a stray volume"'
 
 .PHONY: test-live
 test-live: ## Run checks against the harness servers (needs make vps-up)
 	YOL_LIVE_HOST=localhost YOL_LIVE_PORT=2202 YOL_LIVE_KEY=$(CURDIR)/$(VPS_KEY) YOL_LIVE_MESSY=1 \
 	go test -tags live -count=1 -v ./internal/ssh/
+
+.PHONY: verify-phase1
+verify-phase1: ## Check the promises made about a customer's server, against the harness
+	./dev/verify-phase1.sh
 
 .PHONY: lint
 lint: ## Vet and format check
