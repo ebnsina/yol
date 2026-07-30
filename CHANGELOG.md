@@ -53,6 +53,11 @@ All notable changes to this project are recorded here, newest first. Format foll
 - Client-side validation for immediate feedback on empty or malformed fields. It deliberately
   does not reproduce rules that need stored state; the API remains the authority and its
   messages replace local ones.
+- Hand-built interface components: buttons, inputs, selects, labelled fields, cards, badges,
+  tables, alerts, notifications, empty states and a spinner. No third-party interface kit is
+  used, so every control is ours to change.
+- Field messages sit beneath the field they belong to and are announced to screen readers,
+  with failures announced immediately and everything else at the next natural pause.
 
 ### Security
 
