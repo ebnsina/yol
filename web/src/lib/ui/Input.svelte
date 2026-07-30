@@ -23,7 +23,7 @@
 	bind:value
 	class={[
 		'h-10 w-full border bg-surface px-3 text-sm text-ink transition-colors',
-		'placeholder:text-ink-subtle focus:outline-none focus:ring-1',
+		'placeholder:text-ink-subtle focus:ring-1 focus:outline-none',
 		invalid
 			? 'border-danger focus:border-danger focus:ring-danger'
 			: 'border-line-strong focus:border-ink focus:ring-ink',

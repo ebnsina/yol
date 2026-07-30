@@ -28,7 +28,7 @@
 	bind:value
 	class={[
 		'h-10 w-full appearance-none border bg-surface px-3 text-sm text-ink transition-colors',
-		'focus:outline-none focus:ring-1',
+		'focus:ring-1 focus:outline-none',
 		invalid
 			? 'border-danger focus:border-danger focus:ring-danger'
 			: 'border-line-strong focus:border-ink focus:ring-ink',

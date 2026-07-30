@@ -58,6 +58,16 @@ All notable changes to this project are recorded here, newest first. Format foll
   used, so every control is ours to change.
 - Field messages sit beneath the field they belong to and are announced to screen readers,
   with failures announced immediately and everything else at the next natural pause.
+- Sign in, sign up and sign out screens, an authenticated shell, and screens for creating an
+  organization, managing people and sending invitations.
+- Invitation screen readable before signing in, so an invitee can see which organization and
+  role they were offered before creating an account. Following an invitation through signing
+  up or signing in returns to it afterwards, so the link is never lost.
+- Opening an invitation while signed in as somebody else explains the mismatch, names both
+  addresses, and offers to switch accounts, rather than failing on submission.
+- Controls are shown or hidden from the permissions the API reports, so a member sees roles as
+  plain text where an owner sees a role picker, and neither view reproduces the rules.
+- Our own pages for addresses that do not exist and for unexpected failures.
 
 ### Security
 

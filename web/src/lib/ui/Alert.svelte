@@ -20,7 +20,10 @@
 
 	const tones: Record<Tone, { box: string; icon: IconSvgElement }> = {
 		danger: { box: 'border-danger/30 bg-danger-surface text-danger', icon: Alert01Icon },
-		success: { box: 'border-success/30 bg-success-surface text-success', icon: CheckmarkCircle01Icon },
+		success: {
+			box: 'border-success/30 bg-success-surface text-success',
+			icon: CheckmarkCircle01Icon
+		},
 		warning: { box: 'border-warning/30 bg-warning-surface text-warning', icon: Alert01Icon },
 		neutral: { box: 'border-line bg-surface-sunken text-ink', icon: InformationCircleIcon }
 	};
