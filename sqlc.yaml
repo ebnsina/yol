@@ -4,6 +4,7 @@ sql:
   # because sqlc reads this as a schema, not as a migration history.
   - schema:
       - internal/db/migrations/00001_identity.sql
+      - internal/db/migrations/00005_servers.sql
     queries: internal/db/queries
     engine: postgresql
     gen:

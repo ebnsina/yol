@@ -13,6 +13,52 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DiscoveredKind string
+
+const (
+	DiscoveredKindContainer DiscoveredKind = "container"
+	DiscoveredKindImage     DiscoveredKind = "image"
+	DiscoveredKindVolume    DiscoveredKind = "volume"
+	DiscoveredKindService   DiscoveredKind = "service"
+	DiscoveredKindPort      DiscoveredKind = "port"
+	DiscoveredKindDatabase  DiscoveredKind = "database"
+)
+
+func (e *DiscoveredKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DiscoveredKind(s)
+	case string:
+		*e = DiscoveredKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DiscoveredKind: %T", src)
+	}
+	return nil
+}
+
+type NullDiscoveredKind struct {
+	DiscoveredKind DiscoveredKind
+	Valid          bool // Valid is true if DiscoveredKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDiscoveredKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.DiscoveredKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DiscoveredKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDiscoveredKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DiscoveredKind), nil
+}
+
 type MembershipRole string
 
 const (
@@ -57,6 +103,137 @@ func (ns NullMembershipRole) Value() (driver.Value, error) {
 	return string(ns.MembershipRole), nil
 }
 
+type RoutingMode string
+
+const (
+	RoutingModeTakeover    RoutingMode = "takeover"
+	RoutingModeBehindProxy RoutingMode = "behind_proxy"
+)
+
+func (e *RoutingMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RoutingMode(s)
+	case string:
+		*e = RoutingMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RoutingMode: %T", src)
+	}
+	return nil
+}
+
+type NullRoutingMode struct {
+	RoutingMode RoutingMode
+	Valid       bool // Valid is true if RoutingMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRoutingMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.RoutingMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RoutingMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRoutingMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RoutingMode), nil
+}
+
+type ServerMode string
+
+const (
+	ServerModeManaged ServerMode = "managed"
+	ServerModeWatch   ServerMode = "watch"
+)
+
+func (e *ServerMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ServerMode(s)
+	case string:
+		*e = ServerMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ServerMode: %T", src)
+	}
+	return nil
+}
+
+type NullServerMode struct {
+	ServerMode ServerMode
+	Valid      bool // Valid is true if ServerMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullServerMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.ServerMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ServerMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullServerMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ServerMode), nil
+}
+
+type ServerStatus string
+
+const (
+	ServerStatusPending        ServerStatus = "pending"
+	ServerStatusSurveying      ServerStatus = "surveying"
+	ServerStatusAwaitingChoice ServerStatus = "awaiting_choice"
+	ServerStatusInstalling     ServerStatus = "installing"
+	ServerStatusOnline         ServerStatus = "online"
+	ServerStatusOffline        ServerStatus = "offline"
+	ServerStatusFailed         ServerStatus = "failed"
+)
+
+func (e *ServerStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ServerStatus(s)
+	case string:
+		*e = ServerStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ServerStatus: %T", src)
+	}
+	return nil
+}
+
+type NullServerStatus struct {
+	ServerStatus ServerStatus
+	Valid        bool // Valid is true if ServerStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullServerStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ServerStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ServerStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullServerStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ServerStatus), nil
+}
+
 type AuditLog struct {
 	ID          uuid.UUID
 	OrgID       *uuid.UUID
@@ -67,6 +244,26 @@ type AuditLog struct {
 	Metadata    []byte
 	Ip          *netip.Addr
 	CreatedAt   pgtype.Timestamptz
+}
+
+type DiscoveredResource struct {
+	ID                        uuid.UUID
+	OrgID                     uuid.UUID
+	ServerID                  uuid.UUID
+	Kind                      DiscoveredKind
+	ExternalID                string
+	Name                      string
+	Status                    *string
+	Image                     *string
+	Version                   *string
+	Ports                     []int32
+	SizeBytes                 *int64
+	Managed                   bool
+	AdoptedAt                 pgtype.Timestamptz
+	AdoptedContainerCreatedAt pgtype.Timestamptz
+	Details                   []byte
+	FirstSeenAt               pgtype.Timestamptz
+	LastSeenAt                pgtype.Timestamptz
 }
 
 type Invitation struct {
@@ -96,6 +293,43 @@ type Organization struct {
 	Slug      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type Server struct {
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	Name            string
+	Mode            ServerMode
+	Status          ServerStatus
+	RoutingMode     *RoutingMode
+	Host            string
+	SshPort         int32
+	SshUser         string
+	SshSecret       []byte
+	SshSecretKind   *string
+	AgentTokenHash  []byte
+	AgentVersion    *string
+	AgentLastSeenAt pgtype.Timestamptz
+	OsName          *string
+	OsVersion       *string
+	Arch            *string
+	Kernel          *string
+	CpuCount        *int32
+	MemoryBytes     *int64
+	DockerVersion   *string
+	FailureReason   *string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type ServerEvent struct {
+	ID        uuid.UUID
+	OrgID     uuid.UUID
+	ServerID  uuid.UUID
+	Step      string
+	Message   string
+	Level     string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Session struct {

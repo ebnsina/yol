@@ -77,6 +77,12 @@ All notable changes to this project are recorded here, newest first. Format foll
   someone outside an organization is told it was not found rather than that they lack access,
   that a forwarded invitation cannot be redeemed by the wrong person, and that no technical
   detail appears in any error a client receives.
+- Servers can be recorded, each either managed or watched only, with the survey of what is
+  already on them stored alongside. Setup progress is recorded step by step so a long wait can
+  be shown rather than hidden behind a spinner.
+- Values that must be stored but never readable from the database alone, such as a customer's
+  SSH key, are encrypted with a purpose label, so a value stored for one use cannot be read
+  back through a path meant for another.
 
 ### Security
 
