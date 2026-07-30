@@ -95,3 +95,8 @@ RETURNING *;
 UPDATE discovered_resources
 SET adopted_at = NULL, adopted_container_created_at = NULL
 WHERE server_id = $1 AND id = $2;
+
+-- name: SetServerEnrollmentToken :exec
+UPDATE servers
+SET enrollment_token_hash = $2, enrollment_expires_at = $3, updated_at = now()
+WHERE id = $1;

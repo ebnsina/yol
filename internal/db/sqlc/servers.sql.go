@@ -65,7 +65,7 @@ func (q *Queries) ClearServerPassword(ctx context.Context, id uuid.UUID) error {
 const createServer = `-- name: CreateServer :one
 INSERT INTO servers (id, org_id, name, mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, name, mode, status, routing_mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind, agent_token_hash, agent_version, agent_last_seen_at, os_name, os_version, arch, kernel, cpu_count, memory_bytes, docker_version, failure_reason, created_at, updated_at
+RETURNING id, org_id, name, mode, status, routing_mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind, agent_token_hash, agent_version, agent_last_seen_at, os_name, os_version, arch, kernel, cpu_count, memory_bytes, docker_version, failure_reason, created_at, updated_at, enrollment_token_hash, enrollment_expires_at
 `
 
 type CreateServerParams struct {
@@ -118,6 +118,8 @@ func (q *Queries) CreateServer(ctx context.Context, arg CreateServerParams) (Ser
 		&i.FailureReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnrollmentTokenHash,
+		&i.EnrollmentExpiresAt,
 	)
 	return i, err
 }
@@ -157,7 +159,7 @@ func (q *Queries) DeleteStaleDiscoveredResources(ctx context.Context, serverID u
 }
 
 const getServer = `-- name: GetServer :one
-SELECT id, org_id, name, mode, status, routing_mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind, agent_token_hash, agent_version, agent_last_seen_at, os_name, os_version, arch, kernel, cpu_count, memory_bytes, docker_version, failure_reason, created_at, updated_at FROM servers WHERE id = $1
+SELECT id, org_id, name, mode, status, routing_mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind, agent_token_hash, agent_version, agent_last_seen_at, os_name, os_version, arch, kernel, cpu_count, memory_bytes, docker_version, failure_reason, created_at, updated_at, enrollment_token_hash, enrollment_expires_at FROM servers WHERE id = $1
 `
 
 func (q *Queries) GetServer(ctx context.Context, id uuid.UUID) (Server, error) {
@@ -188,6 +190,8 @@ func (q *Queries) GetServer(ctx context.Context, id uuid.UUID) (Server, error) {
 		&i.FailureReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnrollmentTokenHash,
+		&i.EnrollmentExpiresAt,
 	)
 	return i, err
 }
@@ -276,7 +280,7 @@ func (q *Queries) ListServerEvents(ctx context.Context, arg ListServerEventsPara
 }
 
 const listServers = `-- name: ListServers :many
-SELECT id, org_id, name, mode, status, routing_mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind, agent_token_hash, agent_version, agent_last_seen_at, os_name, os_version, arch, kernel, cpu_count, memory_bytes, docker_version, failure_reason, created_at, updated_at FROM servers WHERE org_id = $1 ORDER BY created_at DESC
+SELECT id, org_id, name, mode, status, routing_mode, host, ssh_port, ssh_user, ssh_secret, ssh_secret_kind, agent_token_hash, agent_version, agent_last_seen_at, os_name, os_version, arch, kernel, cpu_count, memory_bytes, docker_version, failure_reason, created_at, updated_at, enrollment_token_hash, enrollment_expires_at FROM servers WHERE org_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListServers(ctx context.Context, orgID uuid.UUID) ([]Server, error) {
@@ -313,6 +317,8 @@ func (q *Queries) ListServers(ctx context.Context, orgID uuid.UUID) ([]Server, e
 			&i.FailureReason,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EnrollmentTokenHash,
+			&i.EnrollmentExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -443,6 +449,23 @@ type SetServerAgentTokenParams struct {
 
 func (q *Queries) SetServerAgentToken(ctx context.Context, arg SetServerAgentTokenParams) error {
 	_, err := q.db.Exec(ctx, setServerAgentToken, arg.ID, arg.AgentTokenHash)
+	return err
+}
+
+const setServerEnrollmentToken = `-- name: SetServerEnrollmentToken :exec
+UPDATE servers
+SET enrollment_token_hash = $2, enrollment_expires_at = $3, updated_at = now()
+WHERE id = $1
+`
+
+type SetServerEnrollmentTokenParams struct {
+	ID                  uuid.UUID
+	EnrollmentTokenHash []byte
+	EnrollmentExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) SetServerEnrollmentToken(ctx context.Context, arg SetServerEnrollmentTokenParams) error {
+	_, err := q.db.Exec(ctx, setServerEnrollmentToken, arg.ID, arg.EnrollmentTokenHash, arg.EnrollmentExpiresAt)
 	return err
 }
 

@@ -139,6 +139,12 @@ build: ## Build both binaries into bin/
 	go build -o bin/yol-api ./cmd/api
 	go build -o bin/yol-agent ./cmd/agent
 
+.PHONY: build-agent-linux
+build-agent-linux: ## Build the agent for a server (static, no dependencies)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/yol-agent-linux-arm64 ./cmd/agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/yol-agent-linux-amd64 ./cmd/agent
+	@ls -lh bin/yol-agent-linux-* | awk '{print "  " $$9, $$5}' 
+
 .PHONY: tools
 tools: ## Install dev tooling
 	go install github.com/pressly/goose/v3/cmd/goose@latest

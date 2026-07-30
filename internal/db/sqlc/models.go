@@ -296,30 +296,32 @@ type Organization struct {
 }
 
 type Server struct {
-	ID              uuid.UUID
-	OrgID           uuid.UUID
-	Name            string
-	Mode            ServerMode
-	Status          ServerStatus
-	RoutingMode     *RoutingMode
-	Host            string
-	SshPort         int32
-	SshUser         string
-	SshSecret       []byte
-	SshSecretKind   *string
-	AgentTokenHash  []byte
-	AgentVersion    *string
-	AgentLastSeenAt pgtype.Timestamptz
-	OsName          *string
-	OsVersion       *string
-	Arch            *string
-	Kernel          *string
-	CpuCount        *int32
-	MemoryBytes     *int64
-	DockerVersion   *string
-	FailureReason   *string
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID                  uuid.UUID
+	OrgID               uuid.UUID
+	Name                string
+	Mode                ServerMode
+	Status              ServerStatus
+	RoutingMode         *RoutingMode
+	Host                string
+	SshPort             int32
+	SshUser             string
+	SshSecret           []byte
+	SshSecretKind       *string
+	AgentTokenHash      []byte
+	AgentVersion        *string
+	AgentLastSeenAt     pgtype.Timestamptz
+	OsName              *string
+	OsVersion           *string
+	Arch                *string
+	Kernel              *string
+	CpuCount            *int32
+	MemoryBytes         *int64
+	DockerVersion       *string
+	FailureReason       *string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	EnrollmentTokenHash []byte
+	EnrollmentExpiresAt pgtype.Timestamptz
 }
 
 type ServerEvent struct {

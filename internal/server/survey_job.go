@@ -232,6 +232,21 @@ func (s *Surveyor) reportFindings(ctx context.Context, q *sqlc.Queries, args Sur
 	})
 }
 
+// RecordInventory stores what a connected agent reports. Same path as the survey, so a
+// machine looks the same however we learned about it.
+func (s *Service) RecordInventory(ctx context.Context, identity AgentIdentity, inv proto.Inventory) error {
+	args := SurveyArgs{ServerID: identity.ServerID, OrgID: identity.OrgID}
+
+	return s.pool.InOrg(ctx, identity.OrgID, func(tx pgx.Tx) error {
+		q := sqlc.New(tx)
+		if err := storeInventory(ctx, q, args, inv); err != nil {
+			return err
+		}
+		_, err := q.DeleteStaleDiscoveredResources(ctx, identity.ServerID)
+		return err
+	})
+}
+
 // storeInventory writes every resource found, managed or not.
 func storeInventory(ctx context.Context, q *sqlc.Queries, args SurveyArgs, inv proto.Inventory) error {
 	record := func(kind sqlc.DiscoveredKind, externalID, name string, params sqlc.RecordDiscoveredResourceParams) error {

@@ -1,10 +1,13 @@
 package httpx
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/base32"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -54,6 +57,25 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	n, err := s.ResponseWriter.Write(b)
 	s.bytes += n
 	return n, err
+}
+
+// Hijack passes through to the real writer. Without this, wrapping the writer silently
+// breaks anything that takes over the connection, which is every long-lived agent
+// connection: the upgrade is refused and the agent can never connect.
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := s.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("httpx: this connection cannot be taken over")
+	}
+	return hijacker.Hijack()
+}
+
+// Flush passes through so streamed responses reach the client as they are written rather
+// than sitting in a buffer.
+func (s *statusRecorder) Flush() {
+	if flusher, ok := s.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // LogRequests emits one structured line per request.

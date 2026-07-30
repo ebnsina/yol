@@ -56,11 +56,15 @@ func main() {
 		}
 	}()
 
+	hub := server.NewHub()
+	defer hub.CloseAll()
+
 	handler := api.New(api.Deps{
 		Config:   cfg,
 		DB:       pool,
 		Secrets:  box,
 		Enqueuer: server.NewEnqueuer(runner),
+		Hub:      hub,
 	})
 
 	if err := httpx.Serve(ctx, cfg.HTTPAddr, handler, cfg.ShutdownTimeout); err != nil {

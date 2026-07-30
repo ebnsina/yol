@@ -5,6 +5,7 @@ sql:
   - schema:
       - internal/db/migrations/00001_identity.sql
       - internal/db/migrations/00005_servers.sql
+      - internal/db/migrations/00007_agent_enrollment.sql
     queries: internal/db/queries
     engine: postgresql
     gen:

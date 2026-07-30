@@ -112,6 +112,14 @@ All notable changes to this project are recorded here, newest first. Format foll
   services.
 - The port question is asked in plain language with the real consequence of each answer
   spelled out, and once answered the choice is shown rather than asked again.
+- The agent that runs on a customer's server: a single file with no dependencies, about six
+  megabytes, which registers itself, holds a connection out to us, and reports what is on the
+  machine. Because it dials out, a customer opens no port on their server for us.
+- Losing the connection is expected rather than exceptional. The agent retries with a growing
+  delay and a little randomness, so a fleet that lost us together does not all return at once,
+  and a server comes back on its own without anyone intervening.
+- Reading a machine is now one piece of code used both over SSH before anything is installed
+  and by the agent afterwards, so a server looks the same however we came to look at it.
 
 ### Security
 
@@ -126,6 +134,9 @@ All notable changes to this project are recorded here, newest first. Format foll
   password, resolving a session token, and signing out — each go through one narrow
   `SECURITY DEFINER` function rather than relaxing any policy. Each is authorized by
   presenting a secret and returns at most one row.
+- An agent registers with a single-use token that is consumed as it is used, and trades it for
+  a lasting credential kept readable only by its owner. A token seen during setup cannot be
+  replayed afterwards, and only the hash of the lasting credential is stored.
 - The application database role must be `NOSUPERUSER` and `NOBYPASSRLS` and must not own the
   tables. Superusers and table owners bypass row level security, which would silently
   disable tenant isolation.
