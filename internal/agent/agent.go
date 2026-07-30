@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -28,7 +29,6 @@ const Version = "0.1.0"
 const (
 	credentialFile = "credential"
 	enrollmentFile = "enrollment"
-	stateFile      = "state.json"
 )
 
 // Reconnect timing. A server that has been unreachable for a while should not hammer the
@@ -45,6 +45,11 @@ type Agent struct {
 	mode  proto.Mode
 
 	collector Collector
+	tails     *tails
+
+	// The active connection, guarded because log streams write from their own goroutines.
+	writeMu sync.Mutex
+	conn    *websocket.Conn
 }
 
 // Collector reads what is on the machine. An interface so the agent can be exercised without
@@ -55,9 +60,10 @@ type Collector interface {
 	Inventory(ctx context.Context) proto.Inventory
 }
 
-// New builds an agent.
+// New builds an agent. It starts in watch-only mode and is told otherwise by the control
+// plane, so a failure to establish the mode leaves it unable to change anything.
 func New(cfg *config.Agent, collector Collector) *Agent {
-	return &Agent{cfg: cfg, collector: collector, mode: proto.ModeWatch}
+	return &Agent{cfg: cfg, collector: collector, mode: proto.ModeWatch, tails: newTails()}
 }
 
 // Run connects and keeps working until the context ends. It never returns because of a
@@ -164,6 +170,8 @@ func (a *Agent) session(ctx context.Context) error {
 		return err
 	}
 	a.mode = welcome.Mode
+	a.setConn(conn)
+	defer a.clearConn()
 	slog.Info("connected to the control plane", "mode", a.mode, "serverId", welcome.ServerID)
 
 	return a.report(ctx, conn, welcome)
@@ -188,7 +196,7 @@ func (a *Agent) introduce(ctx context.Context, conn *websocket.Conn) error {
 // capabilities are what this build can do. The control plane gates behaviour on these rather
 // than on the version, so an older agent is simply asked to do less.
 func (a *Agent) capabilities() []proto.Capability {
-	return []proto.Capability{proto.CapInventory, proto.CapMetrics}
+	return []proto.Capability{proto.CapInventory, proto.CapMetrics, proto.CapLogTail}
 }
 
 func (a *Agent) awaitWelcome(ctx context.Context, conn *websocket.Conn) (*proto.Welcome, error) {
@@ -222,14 +230,16 @@ func (a *Agent) report(ctx context.Context, conn *websocket.Conn, welcome *proto
 	inventory := time.NewTicker(interval(welcome.InventorySec, 5*time.Minute))
 	defer inventory.Stop()
 
-	// Reading is what notices the connection dying, so it runs alongside the reporting.
+	// Reading both notices the connection dying and delivers instructions.
 	incoming := make(chan error, 1)
 	go func() {
 		for {
-			if _, _, err := conn.Read(ctx); err != nil {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
 				incoming <- err
 				return
 			}
+			a.handle(ctx, data)
 		}
 	}()
 
@@ -288,9 +298,114 @@ func (a *Agent) sendInventory(ctx context.Context, conn *websocket.Conn) error {
 }
 
 func (a *Agent) write(ctx context.Context, conn *websocket.Conn, data []byte) error {
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
+
 	writeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	return conn.Write(writeCtx, websocket.MessageText, data)
+}
+
+// sendRaw writes on the current connection, for work that outlives a single send such as a
+// log stream.
+func (a *Agent) sendRaw(ctx context.Context, data []byte) error {
+	a.writeMu.Lock()
+	conn := a.conn
+	a.writeMu.Unlock()
+
+	if conn == nil {
+		return errors.New("agent: not connected")
+	}
+	return a.write(ctx, conn, data)
+}
+
+func (a *Agent) setConn(conn *websocket.Conn) {
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
+	a.conn = conn
+}
+
+// clearConn drops the connection and ends anything streaming on it, since those messages
+// would have nowhere to go.
+func (a *Agent) clearConn() {
+	a.tails.stopAll()
+
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
+	a.conn = nil
+}
+
+// handle acts on an instruction from the control plane.
+//
+// Watch-only is enforced here rather than trusting the control plane to send only permitted
+// instructions, so a mistake there cannot change a server someone asked us only to watch.
+// Reading is always allowed: looking at logs changes nothing.
+func (a *Agent) handle(ctx context.Context, data []byte) {
+	envelope, err := proto.Decode(data)
+	if err != nil {
+		slog.Warn("unreadable instruction", "error", err)
+		return
+	}
+
+	switch envelope.Type {
+	case proto.TypeTailLogs:
+		var req proto.TailLogs
+		if err := envelope.Into(&req); err != nil {
+			slog.Warn("unreadable log request", "error", err)
+			return
+		}
+		a.startTail(ctx, req)
+
+	case proto.TypeStopTail:
+		var req proto.StopTail
+		if err := envelope.Into(&req); err != nil {
+			return
+		}
+		a.tails.stop(req.StreamID)
+
+	case proto.TypeApplySpec:
+		if !a.permits(envelope.Type) {
+			slog.Warn("refused an instruction to change this server, which is watched only")
+			a.refuse(ctx)
+			return
+		}
+		// Applying a specification arrives with reconciliation.
+		slog.Debug("ignoring instruction this build cannot yet act on", "type", envelope.Type)
+
+	default:
+		// Unknown types are ignored so a newer control plane does not break an older agent.
+		slog.Debug("ignoring instruction this build does not handle", "type", envelope.Type)
+	}
+}
+
+// permits reports whether this agent may act on an instruction.
+//
+// Watch-only is decided here rather than by trusting the control plane to send only permitted
+// instructions, so a mistake there cannot change a server someone asked us only to watch.
+// Reading is always allowed: looking at logs or listing containers changes nothing.
+func (a *Agent) permits(instruction proto.Type) bool {
+	switch instruction {
+	case proto.TypeTailLogs, proto.TypeStopTail, proto.TypeSurvey:
+		return true
+	default:
+		// Permitted only when the control plane has explicitly said this server is managed.
+		// Testing for "not watch-only" would treat an unset mode as permission, so failing to
+		// learn the mode would be the one case that allows everything.
+		return a.mode == proto.ModeManaged
+	}
+}
+
+// refuse tells the control plane that a change was declined, so it can say so rather than
+// waiting for something that will never happen.
+func (a *Agent) refuse(ctx context.Context) {
+	encoded, err := proto.Encode(proto.TypeApplied, proto.Applied{
+		At:      time.Now().UTC(),
+		Refused: "This server is being watched only, so nothing on it was changed.",
+	})
+	if err != nil {
+		return
+	}
+	_ = a.sendRaw(ctx, encoded)
 }
 
 // specVersion is what the agent currently has on disk, so the control plane can skip sending

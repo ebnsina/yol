@@ -20,6 +20,7 @@ type Deps struct {
 	Secrets  *secrets.Box
 	Enqueuer server.Enqueuer
 	Hub      *server.Hub
+	Streams  *server.Streams
 }
 
 // New builds the API handler with logging, panic recovery, and the error envelope.
@@ -37,10 +38,10 @@ func New(d Deps) http.Handler {
 	org.NewHandler(orgSvc, d.Config, authHandler.Required, authHandler.Optional).Routes(mux)
 
 	serverSvc := server.NewService(d.DB, d.Secrets, d.Enqueuer)
-	server.NewHandler(serverSvc, orgSvc, authHandler.Required).Routes(mux)
+	server.NewHandler(serverSvc, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
 
 	// Agents authenticate with their own credential rather than a person's session.
-	server.NewAgentHandler(serverSvc, d.Hub).Routes(mux)
+	server.NewAgentHandler(serverSvc, d.Hub, d.Streams).Routes(mux)
 
 	return httpx.Chain(mux,
 		httpx.WithRequestID,

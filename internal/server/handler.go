@@ -14,12 +14,14 @@ import (
 type Handler struct {
 	svc      *Service
 	orgs     *org.Service
+	hub      *Hub
+	streams  *Streams
 	required httpx.Middleware
 }
 
 // NewHandler builds the server endpoints.
-func NewHandler(svc *Service, orgs *org.Service, required httpx.Middleware) *Handler {
-	return &Handler{svc: svc, orgs: orgs, required: required}
+func NewHandler(svc *Service, orgs *org.Service, hub *Hub, streams *Streams, required httpx.Middleware) *Handler {
+	return &Handler{svc: svc, orgs: orgs, hub: hub, streams: streams, required: required}
 }
 
 // Routes registers the server endpoints. All of them are scoped to an organization, so a
@@ -35,6 +37,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	route("PATCH /v1/organizations/{slug}/servers/{id}/routing", h.chooseRouting)
 	route("GET /v1/organizations/{slug}/servers/{id}/events", h.events)
 	route("GET /v1/organizations/{slug}/servers/{id}/resources", h.resources)
+	route("GET /v1/organizations/{slug}/servers/{id}/containers/{container}/logs", h.logs)
 }
 
 type connectRequest struct {

@@ -120,6 +120,11 @@ All notable changes to this project are recorded here, newest first. Format foll
   and a server comes back on its own without anyone intervening.
 - Reading a machine is now one piece of code used both over SSH before anything is installed
   and by the agent afterwards, so a server looks the same however we came to look at it.
+- Live logs from any container on a connected server, including ones we did not create, since
+  reading changes nothing. History and new lines arrive together, with output and errors kept
+  apart, and nothing is stored: watching costs only the connection it travels over.
+- One reader falling behind never stalls another, and a chatty container is batched rather than
+  producing a message per line.
 
 ### Security
 
@@ -134,6 +139,12 @@ All notable changes to this project are recorded here, newest first. Format foll
   password, resolving a session token, and signing out — each go through one narrow
   `SECURITY DEFINER` function rather than relaxing any policy. Each is authorized by
   presenting a secret and returns at most one row.
+- Watch-only is decided by the agent, and only an explicit instruction that a server is managed
+  permits a change. An agent that has not been told its mode, or fails to learn it, can change
+  nothing rather than everything.
+- Log requests name a container chosen in the control plane, so the agent passes it to Docker
+  as an argument rather than through a shell, and a container named to look like a command
+  cannot run one.
 - An agent registers with a single-use token that is consumed as it is used, and trades it for
   a lasting credential kept readable only by its owner. A token seen during setup cannot be
   replayed afterwards, and only the hash of the lasting credential is stored.

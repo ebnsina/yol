@@ -58,6 +58,7 @@ func main() {
 
 	hub := server.NewHub()
 	defer hub.CloseAll()
+	streams := server.NewStreams()
 
 	handler := api.New(api.Deps{
 		Config:   cfg,
@@ -65,6 +66,7 @@ func main() {
 		Secrets:  box,
 		Enqueuer: server.NewEnqueuer(runner),
 		Hub:      hub,
+		Streams:  streams,
 	})
 
 	if err := httpx.Serve(ctx, cfg.HTTPAddr, handler, cfg.ShutdownTimeout); err != nil {

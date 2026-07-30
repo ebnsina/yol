@@ -16,13 +16,14 @@ import (
 // AgentHandler serves the endpoints agents use. These are the only routes reachable with an
 // agent credential rather than a person's session.
 type AgentHandler struct {
-	svc *Service
-	hub *Hub
+	svc     *Service
+	hub     *Hub
+	streams *Streams
 }
 
 // NewAgentHandler builds the agent endpoints.
-func NewAgentHandler(svc *Service, hub *Hub) *AgentHandler {
-	return &AgentHandler{svc: svc, hub: hub}
+func NewAgentHandler(svc *Service, hub *Hub, streams *Streams) *AgentHandler {
+	return &AgentHandler{svc: svc, hub: hub, streams: streams}
 }
 
 // Routes registers the agent endpoints.
@@ -202,6 +203,13 @@ func (h *AgentHandler) handle(ctx context.Context, c *Connection, envelope *prot
 		if err := h.svc.RecordInventory(ctx, c.Identity, inventory); err != nil {
 			slog.Error("could not record inventory", "serverId", c.Identity.ServerID, "error", err)
 		}
+
+	case proto.TypeLogChunk:
+		var chunk proto.LogChunk
+		if err := envelope.Into(&chunk); err != nil {
+			return
+		}
+		h.streams.Deliver(chunk)
 
 	default:
 		slog.Debug("ignoring message this build does not handle",
