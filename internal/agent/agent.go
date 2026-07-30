@@ -215,7 +215,7 @@ func (a *Agent) introduce(ctx context.Context, conn *websocket.Conn) error {
 // capabilities are what this build can do. The control plane gates behaviour on these rather
 // than on the version, so an older agent is simply asked to do less.
 func (a *Agent) capabilities() []proto.Capability {
-	return []proto.Capability{proto.CapInventory, proto.CapMetrics, proto.CapLogTail}
+	return []proto.Capability{proto.CapInventory, proto.CapMetrics, proto.CapLogTail, proto.CapBuild}
 }
 
 func (a *Agent) awaitWelcome(ctx context.Context, conn *websocket.Conn) (*proto.Welcome, error) {
@@ -381,6 +381,18 @@ func (a *Agent) handle(ctx context.Context, data []byte) {
 			return
 		}
 		a.tails.stop(req.StreamID)
+
+	case proto.TypeBuild:
+		if !a.permits(envelope.Type) {
+			slog.Warn("refused an instruction to build, since this server is watched only")
+			a.refuse(ctx)
+			return
+		}
+		req, ok := a.acceptBuild(envelope)
+		if !ok {
+			return
+		}
+		a.startBuild(ctx, req)
 
 	case proto.TypeApplySpec:
 		if !a.permits(envelope.Type) {

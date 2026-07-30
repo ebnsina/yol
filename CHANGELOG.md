@@ -164,6 +164,15 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Images are built on the customer's own server. Their code never reaches us and no build fleet
+  runs on their behalf, so a deploy costs them nothing beyond the server they already pay for. A
+  Dockerfile in the repository is always used as written; without one, how to build the app is
+  worked out from its files.
+- Build output is streamed while it happens and kept afterwards, so a build that failed overnight
+  can still be read. A build that could never be started says so rather than pointing at output
+  that was never produced.
+- The last few images of each app stay on the machine, so rolling back runs one that is already
+  there rather than building again.
 - An app is reachable by the address of the server it was placed on before any domain has been
   added to it, so a first deploy can be opened straight away. A hostname always wins over this
   once one exists, and on a machine running several apps an address serves nothing, because it
@@ -171,6 +180,20 @@ All notable changes to this project are recorded here, newest first. Format foll
 
 ### Security
 
+- A build request is signed like a specification is, because it hands over a credential for the
+  repository and causes code to run. An unsigned one is refused, so reaching the connection is not
+  enough to start a build on somebody's server.
+- The credential for fetching code is minted for one build, sent as a header rather than in an
+  address so it stays out of logs, and never written to disk.
+- Code arrives as an archive of a single commit, and the archive is not trusted with where it
+  unpacks to. An entry naming a path outside the build is refused rather than quietly rewritten,
+  and links are left out entirely, since one could point at the agent's own credential.
+- Every build runs inside a builder with memory and processor limits, so a build cannot starve the
+  site it is being deployed for. Limits passed to a plain build command are silently ignored by the
+  build engine, so this is the only way they hold.
+- The tool that works out how to build an app is pinned to a version and checked against a known
+  digest before it is installed, so a replaced release is not picked up automatically across every
+  customer's machine.
 - A customer's server will not obtain a certificate for a hostname until the control plane
   confirms somebody added and verified it. Without that, anyone could point a name they own at a
   customer's machine and make it request certificates on their behalf. The check refuses when it

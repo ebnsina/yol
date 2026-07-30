@@ -32,6 +32,7 @@ const (
 	CapLogTail    Capability = "log-tail"    // streams container logs
 	CapMetrics    Capability = "metrics"     // reports resource usage
 	CapExecBackup Capability = "exec-backup" // runs backups
+	CapBuild      Capability = "build"       // builds images from a repository
 )
 
 // Type identifies a message. Values are stable strings, never numbers, so a log line is
@@ -46,9 +47,13 @@ const (
 	TypeApplied   Type = "applied"
 	TypeLogChunk  Type = "log-chunk"
 
+	TypeBuildOutput Type = "build-output"
+	TypeBuildResult Type = "build-result"
+
 	// From the control plane.
 	TypeWelcome   Type = "welcome"
 	TypeApplySpec Type = "apply-spec"
+	TypeBuild     Type = "build"
 	TypeTailLogs  Type = "tail-logs"
 	TypeStopTail  Type = "stop-tail"
 	TypeSurvey    Type = "survey"

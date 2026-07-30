@@ -20,11 +20,18 @@ type AgentHandler struct {
 	hub     *Hub
 	streams *Streams
 	signer  *proto.SigningKey
+	builds  BuildRecorder
 }
 
 // NewAgentHandler builds the agent endpoints.
-func NewAgentHandler(svc *Service, hub *Hub, streams *Streams, signer *proto.SigningKey) *AgentHandler {
-	return &AgentHandler{svc: svc, hub: hub, streams: streams, signer: signer}
+func NewAgentHandler(
+	svc *Service,
+	hub *Hub,
+	streams *Streams,
+	signer *proto.SigningKey,
+	builds BuildRecorder,
+) *AgentHandler {
+	return &AgentHandler{svc: svc, hub: hub, streams: streams, signer: signer, builds: builds}
 }
 
 // Routes registers the agent endpoints.
@@ -224,6 +231,20 @@ func (h *AgentHandler) handle(ctx context.Context, c *Connection, envelope *prot
 			return
 		}
 		h.streams.Deliver(chunk)
+
+	case proto.TypeBuildOutput:
+		var output proto.BuildOutput
+		if err := envelope.Into(&output); err != nil {
+			return
+		}
+		h.builds.RecordBuildOutput(ctx, c.Identity.OrgID, output)
+
+	case proto.TypeBuildResult:
+		var result proto.BuildResult
+		if err := envelope.Into(&result); err != nil {
+			return
+		}
+		h.builds.FinishBuild(ctx, c.Identity.OrgID, result)
 
 	default:
 		slog.Debug("ignoring message this build does not handle",

@@ -128,21 +128,33 @@ func (a *Agent) streamLogs(ctx context.Context, req proto.TailLogs) error {
 	lines := make(chan proto.LogLine, 256)
 	var readers sync.WaitGroup
 	readers.Add(2)
-	go func() { defer readers.Done(); scanInto(stdout, "stdout", lines) }()
-	go func() { defer readers.Done(); scanInto(stderr, "stderr", lines) }()
+	go func() { defer readers.Done(); scanInto(stdout, "stdout", true, lines) }()
+	go func() { defer readers.Done(); scanInto(stderr, "stderr", true, lines) }()
 	go func() { readers.Wait(); close(lines) }()
 
-	a.forwardLines(ctx, req.StreamID, lines)
+	forwardLines(ctx, lines, func(batch []proto.LogLine) {
+		a.sendLogChunk(ctx, proto.LogChunk{
+			StreamID: req.StreamID,
+			At:       time.Now().UTC(),
+			Lines:    batch,
+		})
+	})
 	return cmd.Wait()
 }
 
-// scanInto reads lines and tags them with the stream they came from.
-func scanInto(r io.Reader, stream string, out chan<- proto.LogLine) {
+// scanInto reads lines and tags them with the stream they came from. Timestamps are separated out
+// only where the source prefixes them, which container logs do and a build does not.
+func scanInto(r io.Reader, stream string, timestamped bool, out chan<- proto.LogLine) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
-		at, text := splitTimestamp(scanner.Text())
+		line := scanner.Text()
+		if !timestamped {
+			out <- proto.LogLine{At: time.Now().UTC(), Stream: stream, Text: line}
+			continue
+		}
+		at, text := splitTimestamp(line)
 		out <- proto.LogLine{At: at, Stream: stream, Text: text}
 	}
 }
@@ -170,9 +182,10 @@ func cutSpace(line string) (string, string, bool) {
 	return "", line, false
 }
 
-// forwardLines batches lines and sends them, so a chatty container does not produce a message
-// per line.
-func (a *Agent) forwardLines(ctx context.Context, streamID string, lines <-chan proto.LogLine) {
+// forwardLines batches lines and hands each batch to send, so a chatty container does not produce
+// a message per line. Shared by log tailing and by builds, which are both a stream of lines
+// somebody is watching.
+func forwardLines(ctx context.Context, lines <-chan proto.LogLine, send func([]proto.LogLine)) {
 	ticker := time.NewTicker(logBatchInterval)
 	defer ticker.Stop()
 
@@ -181,11 +194,7 @@ func (a *Agent) forwardLines(ctx context.Context, streamID string, lines <-chan 
 		if len(batch) == 0 {
 			return
 		}
-		a.sendLogChunk(ctx, proto.LogChunk{
-			StreamID: streamID,
-			At:       time.Now().UTC(),
-			Lines:    batch,
-		})
+		send(batch)
 		batch = make([]proto.LogLine, 0, logBatchSize)
 	}
 

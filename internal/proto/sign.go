@@ -23,9 +23,19 @@ type SignedSpec struct {
 	KeyID string `json:"keyId,omitempty"`
 }
 
-// ErrBadSignature means the specification was not signed by the expected key, or was altered
+// SignedMessage is any other instruction carrying a signature, used for those that are not a
+// specification. A build request is one: it hands over a credential and causes code to run, so it
+// is checked exactly as carefully.
+type SignedMessage struct {
+	// The exact bytes that were signed, kept raw for the same reason as in a specification.
+	Payload   json.RawMessage `json:"payload"`
+	Signature string          `json:"signature"`
+	KeyID     string          `json:"keyId,omitempty"`
+}
+
+// ErrBadSignature means the instruction was not signed by the expected key, or was altered
 // after signing. The two are indistinguishable, which is the point.
-var ErrBadSignature = errors.New("proto: specification signature does not verify")
+var ErrBadSignature = errors.New("proto: signature does not verify")
 
 // SigningKey signs specifications. Held only by the control plane.
 type SigningKey struct {
@@ -67,6 +77,19 @@ func (k *SigningKey) Sign(spec Spec) (*SignedSpec, error) {
 	}, nil
 }
 
+// SignMessage encodes and signs an instruction that is not a specification.
+func (k *SigningKey) SignMessage(payload any) (*SignedMessage, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("proto: encode instruction: %w", err)
+	}
+	return &SignedMessage{
+		Payload:   encoded,
+		Signature: base64.RawStdEncoding.EncodeToString(ed25519.Sign(k.private, encoded)),
+		KeyID:     k.id,
+	}, nil
+}
+
 // Verifier checks specifications. Held by agents, and contains no secret.
 type Verifier struct {
 	public ed25519.PublicKey
@@ -100,4 +123,20 @@ func (v *Verifier) Verify(signed *SignedSpec) (*Spec, error) {
 		return nil, fmt.Errorf("proto: decode specification: %w", err)
 	}
 	return &spec, nil
+}
+
+// VerifyMessage checks the signature and only then reads the instruction into into. Nothing is
+// parsed before the signature holds, so an unsigned instruction never becomes something to act on.
+func (v *Verifier) VerifyMessage(signed *SignedMessage, into any) error {
+	signature, err := base64.RawStdEncoding.DecodeString(signed.Signature)
+	if err != nil {
+		return ErrBadSignature
+	}
+	if !ed25519.Verify(v.public, signed.Payload, signature) {
+		return ErrBadSignature
+	}
+	if err := json.Unmarshal(signed.Payload, into); err != nil {
+		return fmt.Errorf("proto: decode instruction: %w", err)
+	}
+	return nil
 }
