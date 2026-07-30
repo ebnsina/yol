@@ -42,6 +42,17 @@ All notable changes to this project are recorded here, newest first. Format foll
 
 ### Security
 
+- Row level security now covers **every** table, including organizations, accounts and
+  sessions. Previously those three had no policies, so a query missing its filter could have
+  listed every organization or every email address in the system. Nothing tenant-bearing is
+  readable without an explicit scope, and a test asserts this for each table so a new table
+  cannot quietly ship without policies.
+- Accounts are visible only to themselves and to members of the organization currently in
+  scope. Sessions are visible only to the account that owns them.
+- The three operations that necessarily happen before a caller is identified — verifying a
+  password, resolving a session token, and signing out — each go through one narrow
+  `SECURITY DEFINER` function rather than relaxing any policy. Each is authorized by
+  presenting a secret and returns at most one row.
 - The application database role must be `NOSUPERUSER` and `NOBYPASSRLS` and must not own the
   tables. Superusers and table owners bypass row level security, which would silently
   disable tenant isolation.

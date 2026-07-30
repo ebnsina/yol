@@ -57,7 +57,7 @@ func signupFixture(t *testing.T, svc *Service, pool *db.Pool) (*Credential, stri
 	}
 
 	t.Cleanup(func() {
-		_ = pool.Unscoped(context.Background(), func(tx pgx.Tx) error {
+		_ = pool.AsUser(context.Background(), cred.User.ID, func(tx pgx.Tx) error {
 			_, err := tx.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, cred.User.ID)
 			return err
 		})
@@ -99,7 +99,7 @@ func TestSignupNormalizesEmail(t *testing.T) {
 		t.Fatalf("Signup: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = pool.Unscoped(ctx, func(tx pgx.Tx) error {
+		_ = pool.AsUser(ctx, cred.User.ID, func(tx pgx.Tx) error {
 			_, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, cred.User.ID)
 			return err
 		})
@@ -209,7 +209,7 @@ func TestExpiredSessionIsRejected(t *testing.T) {
 	cred, _ := signupFixture(t, svc, pool)
 	ctx := context.Background()
 
-	err := pool.Unscoped(ctx, func(tx pgx.Tx) error {
+	err := pool.AsUser(ctx, cred.User.ID, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE token_hash = $1`,
 			HashToken(cred.Token))
@@ -257,7 +257,7 @@ func TestSessionTokenIsNotStored(t *testing.T) {
 	cred, _ := signupFixture(t, svc, pool)
 	ctx := context.Background()
 
-	err := pool.Unscoped(ctx, func(tx pgx.Tx) error {
+	err := pool.AsUser(ctx, cred.User.ID, func(tx pgx.Tx) error {
 		var n int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM sessions WHERE token_hash = $1::text::bytea`, cred.Token,

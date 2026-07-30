@@ -13,10 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createSession = `-- name: CreateSession :one
+const createSession = `-- name: CreateSession :exec
 INSERT INTO sessions (token_hash, user_id, user_agent, ip, expires_at)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING token_hash, user_id, user_agent, ip, created_at, last_seen_at, expires_at
 `
 
 type CreateSessionParams struct {
@@ -27,25 +26,17 @@ type CreateSessionParams struct {
 	ExpiresAt pgtype.Timestamptz
 }
 
-func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
-	row := q.db.QueryRow(ctx, createSession,
+// No RETURNING for the same reason as CreateUser: the session being created is what will
+// identify the caller, so it cannot yet be read back.
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
+	_, err := q.db.Exec(ctx, createSession,
 		arg.TokenHash,
 		arg.UserID,
 		arg.UserAgent,
 		arg.Ip,
 		arg.ExpiresAt,
 	)
-	var i Session
-	err := row.Scan(
-		&i.TokenHash,
-		&i.UserID,
-		&i.UserAgent,
-		&i.Ip,
-		&i.CreatedAt,
-		&i.LastSeenAt,
-		&i.ExpiresAt,
-	)
-	return i, err
+	return err
 }
 
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
@@ -60,66 +51,49 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
-const deleteSession = `-- name: DeleteSession :exec
-DELETE FROM sessions WHERE token_hash = $1
+const listSessionsForUser = `-- name: ListSessionsForUser :many
+
+SELECT token_hash, user_agent, ip, created_at, last_seen_at, expires_at
+FROM sessions
+WHERE user_id = $1 AND expires_at > now()
+ORDER BY last_seen_at DESC
 `
 
-func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
-	_, err := q.db.Exec(ctx, deleteSession, tokenHash)
-	return err
+type ListSessionsForUserRow struct {
+	TokenHash  []byte
+	UserAgent  string
+	Ip         *netip.Addr
+	CreatedAt  pgtype.Timestamptz
+	LastSeenAt pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
 }
 
-const deleteSessionsForUser = `-- name: DeleteSessionsForUser :exec
-DELETE FROM sessions WHERE user_id = $1
-`
-
-func (q *Queries) DeleteSessionsForUser(ctx context.Context, userID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteSessionsForUser, userID)
-	return err
-}
-
-const getSessionWithUser = `-- name: GetSessionWithUser :one
-SELECT
-    s.token_hash, s.user_id, s.user_agent, s.ip, s.created_at, s.last_seen_at, s.expires_at,
-    u.id AS user_id, u.email, u.name, u.email_verified_at
-FROM sessions s
-JOIN users u ON u.id = s.user_id
-WHERE s.token_hash = $1 AND s.expires_at > now()
-`
-
-type GetSessionWithUserRow struct {
-	Session         Session
-	UserID          uuid.UUID
-	Email           string
-	Name            string
-	EmailVerifiedAt pgtype.Timestamptz
-}
-
-// Returns the account with the session so authenticating is a single round trip.
-func (q *Queries) GetSessionWithUser(ctx context.Context, tokenHash []byte) (GetSessionWithUserRow, error) {
-	row := q.db.QueryRow(ctx, getSessionWithUser, tokenHash)
-	var i GetSessionWithUserRow
-	err := row.Scan(
-		&i.Session.TokenHash,
-		&i.Session.UserID,
-		&i.Session.UserAgent,
-		&i.Session.Ip,
-		&i.Session.CreatedAt,
-		&i.Session.LastSeenAt,
-		&i.Session.ExpiresAt,
-		&i.UserID,
-		&i.Email,
-		&i.Name,
-		&i.EmailVerifiedAt,
-	)
-	return i, err
-}
-
-const touchSession = `-- name: TouchSession :exec
-UPDATE sessions SET last_seen_at = now() WHERE token_hash = $1
-`
-
-func (q *Queries) TouchSession(ctx context.Context, tokenHash []byte) error {
-	_, err := q.db.Exec(ctx, touchSession, tokenHash)
-	return err
+// Reading and discarding a session by token goes through authenticate_session and
+// delete_session, because a token must be resolved before there is a current user for the
+// tenant policies to compare against.
+func (q *Queries) ListSessionsForUser(ctx context.Context, userID uuid.UUID) ([]ListSessionsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listSessionsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSessionsForUserRow
+	for rows.Next() {
+		var i ListSessionsForUserRow
+		if err := rows.Scan(
+			&i.TokenHash,
+			&i.UserAgent,
+			&i.Ip,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

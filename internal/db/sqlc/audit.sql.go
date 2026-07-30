@@ -12,49 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const listAuditEvents = `-- name: ListAuditEvents :many
-SELECT id, org_id, actor_user_id, action, target_type, target_id, metadata, ip, created_at FROM audit_log
-WHERE org_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
-`
-
-type ListAuditEventsParams struct {
-	OrgID  *uuid.UUID
-	Limit  int32
-	Offset int32
-}
-
-func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]AuditLog, error) {
-	rows, err := q.db.Query(ctx, listAuditEvents, arg.OrgID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []AuditLog
-	for rows.Next() {
-		var i AuditLog
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrgID,
-			&i.ActorUserID,
-			&i.Action,
-			&i.TargetType,
-			&i.TargetID,
-			&i.Metadata,
-			&i.Ip,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const recordAuditEvent = `-- name: RecordAuditEvent :exec
 INSERT INTO audit_log (id, org_id, actor_user_id, action, target_type, target_id, metadata, ip)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

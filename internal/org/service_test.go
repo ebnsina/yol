@@ -51,7 +51,7 @@ func (f *fixture) newUser(t *testing.T) auth.User {
 		t.Fatalf("signup: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = f.pool.Unscoped(context.Background(), func(tx pgx.Tx) error {
+		_ = f.pool.AsUser(context.Background(), cred.User.ID, func(tx pgx.Tx) error {
 			_, err := tx.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, cred.User.ID)
 			return err
 		})
@@ -66,7 +66,7 @@ func (f *fixture) newOrg(t *testing.T, owner auth.User) *Organization {
 		t.Fatalf("create organization: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = f.pool.Unscoped(context.Background(), func(tx pgx.Tx) error {
+		_ = f.pool.InOrg(context.Background(), o.ID, func(tx pgx.Tx) error {
 			_, err := tx.Exec(context.Background(), `DELETE FROM organizations WHERE id = $1`, o.ID)
 			return err
 		})
@@ -123,11 +123,12 @@ func TestCreateAllowsDuplicateNamesAcrossUsers(t *testing.T) {
 		t.Fatalf("second create: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = f.pool.Unscoped(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = ANY($1)`,
-				[]uuid.UUID{first.ID, second.ID})
-			return err
-		})
+		for _, id := range []uuid.UUID{first.ID, second.ID} {
+			_ = f.pool.InOrg(ctx, id, func(tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, id)
+				return err
+			})
+		}
 	})
 
 	if first.Slug == second.Slug {

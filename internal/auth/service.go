@@ -84,23 +84,26 @@ func (s *Service) Signup(ctx context.Context, in SignupInput) (*Credential, erro
 		return nil, httpx.Internal(err)
 	}
 
+	user := User{ID: uuid.New(), Email: in.Email, Name: strings.TrimSpace(in.Name)}
+
 	var cred *Credential
 	err = s.pool.Unscoped(ctx, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
-		user, err := q.CreateUser(ctx, sqlc.CreateUserParams{
-			ID:           uuid.New(),
-			Email:        in.Email,
-			Name:         strings.TrimSpace(in.Name),
+		if err := q.CreateUser(ctx, sqlc.CreateUserParams{
+			ID:           user.ID,
+			Email:        user.Email,
+			Name:         user.Name,
 			PasswordHash: hash,
-		})
-		if err != nil {
+		}); err != nil {
 			if db.IsUniqueViolation(err) {
 				return httpx.AlreadyExists("An account already uses that email address. Try signing in instead.").
 					WithField("email", "This email address is already registered.")
 			}
 			return httpx.Internal(err)
 		}
-		cred, err = s.startSession(ctx, q, toUser(user), in.Client)
+
+		var err error
+		cred, err = s.startSession(ctx, q, user, in.Client)
 		return err
 	})
 	if err != nil {
@@ -118,17 +121,12 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (*Credential, error)
 
 	var cred *Credential
 	err := s.pool.Unscoped(ctx, func(tx pgx.Tx) error {
-		q := sqlc.New(tx)
-		user, err := q.GetUserByEmail(ctx, in.Email)
+		user, hash, err := findUserForLogin(ctx, tx, in.Email)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				// Same failure as a wrong password, so this cannot enumerate accounts.
-				return httpx.CredentialsFailed().WithCause(err)
-			}
-			return httpx.Internal(err)
+			return err
 		}
 
-		ok, err := VerifyPassword(in.Password, user.PasswordHash)
+		ok, err := VerifyPassword(in.Password, hash)
 		if err != nil {
 			return httpx.Internal(err)
 		}
@@ -136,7 +134,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (*Credential, error)
 			return httpx.CredentialsFailed()
 		}
 
-		cred, err = s.startSession(ctx, q, toUser(user), in.Client)
+		cred, err = s.startSession(ctx, sqlc.New(tx), user, in.Client)
 		return err
 	})
 	if err != nil {
@@ -151,7 +149,8 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 		return nil
 	}
 	return s.pool.Unscoped(ctx, func(tx pgx.Tx) error {
-		if err := sqlc.New(tx).DeleteSession(ctx, HashToken(token)); err != nil {
+		// Holding the token is what authorizes discarding it, so this runs before identity.
+		if _, err := tx.Exec(ctx, `SELECT delete_session($1)`, HashToken(token)); err != nil {
 			return httpx.Internal(err)
 		}
 		return nil
@@ -166,32 +165,56 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 
 	var out *Session
 	err := s.pool.Unscoped(ctx, func(tx pgx.Tx) error {
-		q := sqlc.New(tx)
-		row, err := q.GetSessionWithUser(ctx, HashToken(token))
+		var (
+			user       User
+			verifiedAt pgtype.Timestamptz
+			expiresAt  pgtype.Timestamptz
+		)
+		// A token must be resolved before there is a current user for policies to compare
+		// against, so this reads through the dedicated function.
+		err := tx.QueryRow(ctx,
+			`SELECT user_id, user_email, user_name, user_verified_at, session_expires_at
+			 FROM authenticate_session($1)`, HashToken(token),
+		).Scan(&user.ID, &user.Email, &user.Name, &verifiedAt, &expiresAt)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return httpx.NotAuthenticated().WithCause(err)
 			}
 			return httpx.Internal(err)
 		}
-		if err := q.TouchSession(ctx, row.Session.TokenHash); err != nil {
-			return httpx.Internal(err)
-		}
-		out = &Session{
-			User: User{
-				ID:            row.UserID,
-				Email:         row.Email,
-				Name:          row.Name,
-				EmailVerified: row.EmailVerifiedAt.Valid,
-			},
-			ExpiresAt: row.Session.ExpiresAt.Time,
-		}
+
+		user.EmailVerified = verifiedAt.Valid
+		out = &Session{User: user, ExpiresAt: expiresAt.Time}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// findUserForLogin reads the account and its password hash before identity is established.
+// An unknown address returns the same failure as a wrong password, so the endpoint cannot
+// be used to discover which addresses have accounts.
+func findUserForLogin(ctx context.Context, tx pgx.Tx, email string) (User, string, error) {
+	var (
+		user       User
+		hash       string
+		verifiedAt pgtype.Timestamptz
+	)
+	err := tx.QueryRow(ctx,
+		`SELECT user_id, user_email, user_name, user_password_hash, user_verified_at
+		 FROM find_user_for_login($1)`, email,
+	).Scan(&user.ID, &user.Email, &user.Name, &hash, &verifiedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, "", httpx.CredentialsFailed().WithCause(err)
+		}
+		return User{}, "", httpx.Internal(err)
+	}
+
+	user.EmailVerified = verifiedAt.Valid
+	return user, hash, nil
 }
 
 // startSession issues a token and stores only its hash.
@@ -202,7 +225,7 @@ func (s *Service) startSession(ctx context.Context, q *sqlc.Queries, user User, 
 	}
 	expires := time.Now().Add(s.cfg.SessionTTL)
 
-	if _, err := q.CreateSession(ctx, sqlc.CreateSessionParams{
+	if err := q.CreateSession(ctx, sqlc.CreateSessionParams{
 		TokenHash: hash,
 		UserID:    user.ID,
 		UserAgent: truncate(client.UserAgent, 400),
@@ -213,10 +236,6 @@ func (s *Service) startSession(ctx context.Context, q *sqlc.Queries, user User, 
 	}
 
 	return &Credential{Token: token, ExpiresAt: expires, User: user}, nil
-}
-
-func toUser(u sqlc.User) User {
-	return User{ID: u.ID, Email: u.Email, Name: u.Name, EmailVerified: u.EmailVerifiedAt.Valid}
 }
 
 // parseIP tolerates a missing or unparseable address rather than failing the request.

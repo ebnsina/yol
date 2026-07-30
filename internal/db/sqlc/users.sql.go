@@ -11,10 +11,9 @@ import (
 	"github.com/google/uuid"
 )
 
-const createUser = `-- name: CreateUser :one
+const createUser = `-- name: CreateUser :exec
 INSERT INTO users (id, email, name, password_hash)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, name, password_hash, email_verified_at, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -24,65 +23,20 @@ type CreateUserParams struct {
 	PasswordHash string
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser,
+// No RETURNING: signing up happens before there is a current user, so the new row is not
+// yet readable, and the caller already knows every value it supplied.
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
+	_, err := q.db.Exec(ctx, createUser,
 		arg.ID,
 		arg.Email,
 		arg.Name,
 		arg.PasswordHash,
 	)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.Name,
-		&i.PasswordHash,
-		&i.EmailVerifiedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, email_verified_at, created_at, updated_at FROM users WHERE email = $1
-`
-
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.Name,
-		&i.PasswordHash,
-		&i.EmailVerifiedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, email_verified_at, created_at, updated_at FROM users WHERE id = $1
-`
-
-func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.Name,
-		&i.PasswordHash,
-		&i.EmailVerifiedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	return err
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :exec
+
 UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1
 `
 
@@ -91,6 +45,8 @@ type UpdateUserPasswordParams struct {
 	PasswordHash string
 }
 
+// Signing in reads through find_user_for_login instead, because the tenant policies on
+// users cannot apply before the caller has been identified.
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
 	return err

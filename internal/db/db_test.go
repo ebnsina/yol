@@ -30,36 +30,41 @@ func seedOrg(t *testing.T, p *Pool) (orgID, userID uuid.UUID) {
 	ctx := context.Background()
 	orgID, userID = uuid.New(), uuid.New()
 
+	// Creating an account happens before there is a current user, as at signup.
 	err := p.Unscoped(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
-			orgID, "Test "+orgID.String()[:8], "test-"+orgID.String()[:8]); err != nil {
-			return err
-		}
 		_, err := tx.Exec(ctx,
 			`INSERT INTO users (id, email, name, password_hash) VALUES ($1, $2, $3, 'x')`,
 			userID, userID.String()[:8]+"@test.io", "Test User")
 		return err
 	})
 	if err != nil {
-		t.Fatalf("seed: %v", err)
+		t.Fatalf("seed user: %v", err)
 	}
 
-	err = p.InOrg(ctx, orgID, func(tx pgx.Tx) error {
+	// The organization and its first membership are written inside the new scope, which is
+	// what the policies require and what the service does.
+	scope := Scope{OrgID: orgID, UserID: userID}
+	err = p.Tx(ctx, scope, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
+			orgID, "Test "+orgID.String()[:8], "test-"+orgID.String()[:8]); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx,
 			`INSERT INTO memberships (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')`,
 			uuid.New(), orgID, userID)
 		return err
 	})
 	if err != nil {
-		t.Fatalf("seed membership: %v", err)
+		t.Fatalf("seed organization: %v", err)
 	}
 
 	t.Cleanup(func() {
-		_ = p.Unscoped(ctx, func(tx pgx.Tx) error {
-			if _, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, orgID); err != nil {
-				return err
-			}
+		_ = p.Tx(ctx, scope, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, orgID)
+			return err
+		})
+		_ = p.AsUser(ctx, userID, func(tx pgx.Tx) error {
 			_, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 			return err
 		})
@@ -176,6 +181,126 @@ func TestAsUserCannotJoinAnotherOrg(t *testing.T) {
 	}
 }
 
+// Nothing tenant-bearing may be readable without a scope. This is the property that makes
+// a forgotten WHERE clause harmless rather than a cross-tenant leak.
+func TestNoTenantTableIsReadableWithoutScope(t *testing.T) {
+	p := testPool(t)
+	ctx := context.Background()
+	seedOrg(t, p)
+
+	tables := []string{"organizations", "users", "sessions", "memberships", "invitations", "audit_log"}
+	err := p.Unscoped(ctx, func(tx pgx.Tx) error {
+		for _, table := range tables {
+			var n int
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n); err != nil {
+				return err
+			}
+			if n != 0 {
+				t.Errorf("%s exposed %d rows with no scope set", table, n)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Unscoped: %v", err)
+	}
+}
+
+// Every tenant-bearing table must have policies that are actually enforced.
+func TestEveryTenantTableEnforcesRowLevelSecurity(t *testing.T) {
+	p := testPool(t)
+	ctx := context.Background()
+
+	err := p.Unscoped(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT relname, relrowsecurity, relforcerowsecurity
+			FROM pg_class
+			WHERE relnamespace = 'public'::regnamespace
+			  AND relkind = 'r'
+			  AND relname <> 'goose_db_version'`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		seen := 0
+		for rows.Next() {
+			var name string
+			var enabled, forced bool
+			if err := rows.Scan(&name, &enabled, &forced); err != nil {
+				return err
+			}
+			seen++
+			if !enabled {
+				t.Errorf("%s has no row level security", name)
+			}
+			if !forced {
+				t.Errorf("%s does not force row level security, so the owner bypasses it", name)
+			}
+		}
+		if seen == 0 {
+			t.Error("no tables inspected")
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		t.Fatalf("inspect tables: %v", err)
+	}
+}
+
+// Belonging to one organization must not reveal another organization's members.
+func TestOrgScopeDoesNotExposeOtherOrgsUsers(t *testing.T) {
+	p := testPool(t)
+	ctx := context.Background()
+	orgA, userA := seedOrg(t, p)
+	_, userB := seedOrg(t, p)
+
+	err := p.InOrgAsUser(ctx, orgA, userA, func(tx pgx.Tx) error {
+		var visible int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, userB).Scan(&visible); err != nil {
+			return err
+		}
+		if visible != 0 {
+			t.Error("a user from another organization was readable")
+		}
+
+		// The caller's own peers, here just themselves, must still be readable.
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, userA).Scan(&visible); err != nil {
+			return err
+		}
+		if visible != 1 {
+			t.Error("the caller could not read their own organization's members")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("InOrgAsUser: %v", err)
+	}
+}
+
+// A member may read an organization to resolve it by slug, but must not be able to rename
+// one while acting in the scope of a different organization.
+func TestOrgMemberReadPolicyIsNotWritable(t *testing.T) {
+	p := testPool(t)
+	ctx := context.Background()
+	orgA, userA := seedOrg(t, p)
+	orgB, _ := seedOrg(t, p)
+
+	err := p.InOrgAsUser(ctx, orgB, userA, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE organizations SET name = 'Renamed' WHERE id = $1`, orgA)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 0 {
+			t.Error("renamed an organization while acting in the scope of another")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("InOrgAsUser: %v", err)
+	}
+}
+
 func TestInOrgRequiresAnOrg(t *testing.T) {
 	p := testPool(t)
 	err := p.InOrg(context.Background(), uuid.Nil, func(pgx.Tx) error { return nil })
@@ -228,14 +353,15 @@ func TestIsUniqueViolation(t *testing.T) {
 	orgID, _ := seedOrg(t, p)
 
 	var slug string
-	if err := p.Unscoped(ctx, func(tx pgx.Tx) error {
+	if err := p.InOrg(ctx, orgID, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT slug FROM organizations WHERE id = $1`, orgID).Scan(&slug)
 	}); err != nil {
 		t.Fatalf("read slug: %v", err)
 	}
 
-	err := p.Unscoped(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `INSERT INTO organizations (id, name, slug) VALUES ($1, 'dup', $2)`, uuid.New(), slug)
+	duplicateID := uuid.New()
+	err := p.InOrg(ctx, duplicateID, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO organizations (id, name, slug) VALUES ($1, 'dup', $2)`, duplicateID, slug)
 		return err
 	})
 	if !IsUniqueViolation(err) {
