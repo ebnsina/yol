@@ -1,0 +1,96 @@
+@import 'tailwindcss';
+
+/* Variable fonts, self-hosted so no request leaves the origin and first paint is not
+   waiting on a third party. One file per family covers every weight. */
+@font-face {
+	font-family: 'Mona Sans';
+	src: url('/fonts/mona-sans-latin.woff2') format('woff2');
+	font-weight: 200 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Geist Mono';
+	src: url('/fonts/geist-mono-latin.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@theme {
+	--font-sans: 'Mona Sans', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+
+	/* Monochrome. These carry the whole interface; colour is reserved for status and
+	   appears nowhere else. */
+	--color-ink: oklch(0.16 0 0);
+	--color-ink-muted: oklch(0.45 0 0);
+	--color-ink-subtle: oklch(0.62 0 0);
+	--color-ink-inverse: oklch(0.99 0 0);
+
+	--color-surface: oklch(1 0 0);
+	--color-surface-sunken: oklch(0.975 0 0);
+	--color-surface-raised: oklch(0.955 0 0);
+	--color-surface-inverse: oklch(0.16 0 0);
+
+	--color-line: oklch(0.91 0 0);
+	--color-line-strong: oklch(0.82 0 0);
+
+	/* Status only. Never decoration. */
+	--color-danger: oklch(0.52 0.19 26);
+	--color-danger-surface: oklch(0.96 0.03 26);
+	--color-success: oklch(0.5 0.13 152);
+	--color-success-surface: oklch(0.96 0.03 152);
+	--color-warning: oklch(0.58 0.13 75);
+	--color-warning-surface: oklch(0.96 0.04 75);
+
+	--text-2xs: 0.6875rem;
+}
+
+@layer base {
+	html {
+		font-family: var(--font-sans);
+		color: var(--color-ink);
+		background-color: var(--color-surface);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		text-size-adjust: 100%;
+	}
+
+	code,
+	kbd,
+	samp,
+	pre {
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--color-ink);
+		outline-offset: 2px;
+	}
+
+	::selection {
+		background-color: var(--color-ink);
+		color: var(--color-ink-inverse);
+	}
+
+	/* Honoured once here rather than per component. */
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		*::before,
+		*::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+		}
+	}
+}
+
+/* Numbers use fixed-width digits so live values do not make columns twitch as they change. */
+@utility numeric {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: 'zero' 1;
+}

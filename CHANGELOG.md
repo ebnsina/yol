@@ -40,6 +40,20 @@ All notable changes to this project are recorded here, newest first. Format foll
   hide controls from that rather than reproducing the rules themselves.
 - An audit record is written for organization changes, invitations and membership changes.
 
+- Web client scaffold: SvelteKit with Svelte 5 and Tailwind, built as a single page app that
+  talks only to the API, so there is no server-side layer and no second place for logic.
+- Self-hosted Mona Sans and Geist Mono as variable fonts, 60KB for both families across every
+  weight, with fixed-width digits so live values do not make columns twitch as they change.
+- Monochrome design tokens, with colour reserved for status and used nowhere as decoration.
+- One API client for the whole app. Error messages come from the API and are shown as written,
+  so every screen says the same thing and a future client behaves identically.
+- Dates, numbers, byte sizes and durations are formatted with the platform's own
+  internationalisation support rather than hand-written helpers, so they follow the reader's
+  locale.
+- Client-side validation for immediate feedback on empty or malformed fields. It deliberately
+  does not reproduce rules that need stored state; the API remains the authority and its
+  messages replace local ones.
+
 ### Security
 
 - Row level security now covers **every** table, including organizations, accounts and
