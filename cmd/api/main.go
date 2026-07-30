@@ -40,7 +40,7 @@ func main() {
 	// Where code comes from. Parsed now so a bad key stops the process here rather than at the
 	// first deploy somebody attempts.
 	code, err := github.NewApp(cfg.GitHubAppID, cfg.GitHubAppSlug, cfg.GitHubPrivateKey,
-		cfg.GitHubAPIURL.String())
+		cfg.GitHubAPIURL.String(), cfg.GitHubSourceURL.String())
 	if err != nil {
 		slog.Error("cannot set up access to repositories", "error", err)
 		os.Exit(1)

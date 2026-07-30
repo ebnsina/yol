@@ -50,8 +50,10 @@ type App struct {
 	key   *rsa.PrivateKey
 
 	client *http.Client
-	// Where GitHub is.
-	apiBase string
+	// Where GitHub is, as we reach it, and as a customer's server reaches it. The same in the
+	// ordinary case; different when their machine takes another route to the same place.
+	apiBase    string
+	sourceBase string
 
 	// Installation tokens are reused until they are nearly expired, so opening a screen that lists
 	// repositories does not mint one every time.
@@ -67,23 +69,25 @@ type cachedToken struct {
 // NewApp builds the client. The key is parsed here so a bad one stops the process at startup
 // rather than at the first deploy somebody attempts.
 //
-// apiBase is where GitHub is. Passed in rather than fixed, so the harness can prove a deploy
-// against a stand-in without any of this code behaving differently.
-func NewApp(appID, slug string, privateKeyPEM []byte, apiBase string) (*App, error) {
+// apiBase is where this process reaches GitHub; sourceBase is where a customer's server reaches it
+// to fetch code. Passed in rather than fixed, so the harness can prove a deploy against a stand-in
+// without any of this code behaving differently.
+func NewApp(appID, slug string, privateKeyPEM []byte, apiBase, sourceBase string) (*App, error) {
 	key, err := parsePrivateKey(privateKeyPEM)
 	if err != nil {
 		return nil, err
 	}
-	if apiBase == "" {
+	if apiBase == "" || sourceBase == "" {
 		return nil, errors.New("github: no address was given for GitHub")
 	}
 	return &App{
-		appID:   appID,
-		slug:    slug,
-		key:     key,
-		apiBase: strings.TrimSuffix(apiBase, "/"),
-		client:  &http.Client{Timeout: requestTimeout},
-		tokens:  make(map[int64]cachedToken),
+		appID:      appID,
+		slug:       slug,
+		key:        key,
+		apiBase:    strings.TrimSuffix(apiBase, "/"),
+		sourceBase: strings.TrimSuffix(sourceBase, "/"),
+		client:     &http.Client{Timeout: requestTimeout},
+		tokens:     make(map[int64]cachedToken),
 	}, nil
 }
 
@@ -296,7 +300,7 @@ func (a *App) LatestCommit(ctx context.Context, installationID, fullName, branch
 // SourceURL is where one commit of a repository can be fetched as an archive. Handed to the agent
 // with a token, so the code goes straight from GitHub to the customer's server and never through us.
 func (a *App) SourceURL(fullName, commitSHA string) string {
-	return a.apiBase + "/repos/" + fullName + "/tarball/" + commitSHA
+	return a.sourceBase + "/repos/" + fullName + "/tarball/" + commitSHA
 }
 
 // call makes one request and reads the answer.

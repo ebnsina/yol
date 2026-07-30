@@ -24,12 +24,12 @@ LOG="$SCRATCH/api.log"
 GITHUB_LOG="$SCRATCH/github.log"
 VERSION_FILE="$SCRATCH/branch-head"
 
-# One address for the stand-in, because two different things reach it: the control plane, running
-# here, and the agent, running inside a stand-in server. `host.docker.internal` is only meaningful
-# inside a container and does not resolve here, so the machine's own address is used instead.
-HOST_ADDRESS="${YOL_E2E_HOST_ADDRESS:-$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')}"
-[[ -n "$HOST_ADDRESS" ]] || { echo "could not work out this machine's address"; exit 1; }
-GITHUB="http://$HOST_ADDRESS:$GITHUB_PORT"
+# Two addresses for one stand-in, because two machines reach it. The control plane runs here and
+# reaches it on loopback; the agent runs inside a stand-in server, where loopback is that server and
+# the way out is `host.docker.internal`. Neither name works from the other side, which is exactly
+# why the two are configured separately.
+GITHUB="http://localhost:$GITHUB_PORT"
+GITHUB_FROM_SERVER="http://host.docker.internal:$GITHUB_PORT"
 
 # The harness server this runs against, and the port its router answers on.
 VPS_SSH_PORT=2201
@@ -162,7 +162,8 @@ set -a
 source ./.env
 set +a
 # Where the control plane looks for GitHub, and where the agent fetches code from.
-YOL_GITHUB_API_URL="$GITHUB" YOL_HTTP_ADDR=":$PORT" go run ./cmd/api >"$LOG" 2>&1 &
+YOL_GITHUB_API_URL="$GITHUB" YOL_GITHUB_SOURCE_URL="$GITHUB_FROM_SERVER" \
+	YOL_HTTP_ADDR=":$PORT" go run ./cmd/api >"$LOG" 2>&1 &
 api_pid=$!
 
 for _ in $(seq 60); do
@@ -180,8 +181,8 @@ done
 curl -sf "$GITHUB/installation/repositories" >/dev/null 2>&1 ||
 	{ echo "the stand-in for GitHub never became ready at $GITHUB"; tail -10 "$GITHUB_LOG"; exit 1; }
 ssh "${SSH_OPTS[@]}" -p "$VPS_SSH_PORT" root@localhost \
-	"curl -sf --max-time 5 $GITHUB/installation/repositories >/dev/null" 2>/dev/null ||
-	{ echo "the server cannot reach the stand-in at $GITHUB, so no build could fetch code"; exit 1; }
+	"curl -sf --max-time 5 $GITHUB_FROM_SERVER/installation/repositories >/dev/null" 2>/dev/null ||
+	{ echo "the server cannot reach the stand-in at $GITHUB_FROM_SERVER, so no build could fetch code"; exit 1; }
 
 ACCOUNT_TOKEN=$(curl -sS -X POST "$API/v1/auth/signup" -H 'Content-Type: application/json' \
 	-d '{"email":"deploy@example.com","password":"a-long-enough-passphrase","name":"Deploy Person"}' | field token)

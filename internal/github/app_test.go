@@ -43,7 +43,7 @@ func standIn(t *testing.T, handler http.HandlerFunc) (*App, *httptest.Server) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	app, err := NewApp("123456", "yol", encoded, server.URL)
+	app, err := NewApp("123456", "yol", encoded, server.URL, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func standIn(t *testing.T, handler http.HandlerFunc) (*App, *httptest.Server) {
 // when the app was created.
 func TestBothKeyEncodingsAreAccepted(t *testing.T) {
 	key, pkcs1 := testKey(t)
-	if _, err := NewApp("1", "yol", pkcs1, apiBaseForTests); err != nil {
+	if _, err := NewApp("1", "yol", pkcs1, apiBaseForTests, apiBaseForTests); err != nil {
 		t.Errorf("the older encoding was refused: %v", err)
 	}
 
@@ -63,14 +63,14 @@ func TestBothKeyEncodingsAreAccepted(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkcs8 := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: raw})
-	if _, err := NewApp("1", "yol", pkcs8, apiBaseForTests); err != nil {
+	if _, err := NewApp("1", "yol", pkcs8, apiBaseForTests, apiBaseForTests); err != nil {
 		t.Errorf("the newer encoding was refused: %v", err)
 	}
 }
 
 // A bad key must stop the process at startup rather than at the first deploy somebody attempts.
 func TestSomethingThatIsNotAKeyIsRefused(t *testing.T) {
-	if _, err := NewApp("1", "yol", []byte("not a key at all"), apiBaseForTests); err == nil {
+	if _, err := NewApp("1", "yol", []byte("not a key at all"), apiBaseForTests, apiBaseForTests); err == nil {
 		t.Error("something that is not a key was accepted")
 	}
 }
@@ -79,7 +79,7 @@ func TestSomethingThatIsNotAKeyIsRefused(t *testing.T) {
 // not issued in the future, and not lasting longer than allowed.
 func TestTheTokenProvingWeAreTheApplicationVerifies(t *testing.T) {
 	key, encoded := testKey(t)
-	app, err := NewApp("123456", "yol", encoded, apiBaseForTests)
+	app, err := NewApp("123456", "yol", encoded, apiBaseForTests, apiBaseForTests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,12 +262,15 @@ func TestAFailureFromGitHubIsExplained(t *testing.T) {
 // branch that may have moved on by the time the build starts.
 func TestTheSourceAddressNamesTheExactCommit(t *testing.T) {
 	_, encoded := testKey(t)
-	app, err := NewApp("1", "yol", encoded, "https://api.github.test")
+	app, err := NewApp("1", "yol", encoded, apiBaseForTests, "https://codeload.github.test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	url := app.SourceURL("owner/repo", "abcdef1234567890")
 
+	if !strings.HasPrefix(url, "https://codeload.github.test") {
+		t.Errorf("url = %q, want the address a customer's server fetches from", url)
+	}
 	if !strings.HasSuffix(url, "/repos/owner/repo/tarball/abcdef1234567890") {
 		t.Errorf("url = %q, want it to name the commit", url)
 	}
