@@ -25,7 +25,16 @@ import (
 // added to a container that already exists, so an adopted one is recognised by name instead.
 // Everything else is invisible to removal.
 
+// defaultDrain is how long the version being replaced is left running after traffic has moved off
+// it. Long enough for a request already being served to finish, short enough that a deploy still
+// feels like one thing happening rather than two.
+const defaultDrain = 10 * time.Second
+
 // apply brings the machine in line with the specification and reports what changed.
+//
+// The order is the whole of what makes a deploy free of dropped requests, so it is stated once
+// here and followed exactly: start the new version, wait for it to answer, move traffic, and only
+// then take the old one away. Nothing is removed while its replacement is unproven.
 func (a *Agent) apply(ctx context.Context, spec *proto.Spec) proto.Applied {
 	applied := proto.Applied{SpecVersion: spec.Version, At: time.Now().UTC()}
 
@@ -34,18 +43,160 @@ func (a *Agent) apply(ctx context.Context, spec *proto.Spec) proto.Applied {
 		return applied
 	}
 
-	actual := a.managedContainers(ctx, spec)
-	desired := make(map[string]proto.SpecContainer, len(spec.Containers))
-	for _, container := range spec.Containers {
-		desired[container.Name] = container
+	plan := planRollout(a.managedContainers(ctx, spec), spec)
+	applied.Unchanged = plan.unchanged
+
+	if err := a.ensureNetwork(ctx); err != nil {
+		slog.Error("could not create the private network", "error", err)
+	}
+	for _, volume := range spec.Volumes {
+		if err := a.ensureVolume(ctx, volume); err != nil {
+			slog.Error("could not create volume", "volume", volume.Name, "error", err)
+		}
 	}
 
-	// Remove what we own and no longer want. Ordered before creating so a renamed container
-	// releases its ports first.
+	started := a.start(ctx, plan, &applied)
+	unproven := a.gate(ctx, started, &applied)
+
+	// Traffic is moved only to containers that answered. A route pointing at one that did not is
+	// left where it was, which is what keeps the version already serving in front of people.
+	a.syncRouter(ctx, withoutRoutesTo(spec, unproven))
+
+	// Nothing at all is removed on a pass where something failed to come up. The old version is
+	// the only working thing left, and it is worth more than a tidy machine.
+	if len(unproven) > 0 {
+		slog.Warn("kept the previous version serving because the new one did not answer",
+			"containers", len(unproven))
+		return applied
+	}
+	a.retire(ctx, plan, len(started) > 0, &applied)
+	return applied
+}
+
+// rolloutPlan is what one pass will do, worked out before anything changes so that the order can
+// be read and reasoned about in one place rather than inferred from the loops that carry it out.
+type rolloutPlan struct {
+	// Wanted and not running under that name at all. A deploy produces one of these, since a
+	// container is named for its deployment and so never collides with the one already serving.
+	create []proto.SpecContainer
+	// Running under the wanted name but not as wanted. Docker cannot change a running container's
+	// shape, so this one is interrupted: there is nothing to fall back to while it restarts.
+	replace []proto.SpecContainer
+	// Ours, and no longer wanted.
+	remove    []string
+	unchanged int
+}
+
+func planRollout(actual map[string]proto.Container, spec *proto.Spec) rolloutPlan {
+	var plan rolloutPlan
+
+	desired := make(map[string]bool, len(spec.Containers))
+	for _, want := range spec.Containers {
+		desired[want.Name] = true
+
+		current, exists := actual[want.Name]
+		switch {
+		case !exists:
+			plan.create = append(plan.create, want)
+		case matches(current, want):
+			plan.unchanged++
+		default:
+			plan.replace = append(plan.replace, want)
+		}
+	}
+
 	for name := range actual {
-		if _, wanted := desired[name]; wanted {
+		if !desired[name] {
+			plan.remove = append(plan.remove, name)
+		}
+	}
+	slices.Sort(plan.remove)
+	return plan
+}
+
+// start brings up what is wanted and returns the containers now running that were not before,
+// which are the ones a health check applies to.
+func (a *Agent) start(ctx context.Context, plan rolloutPlan, applied *proto.Applied) []proto.SpecContainer {
+	var started []proto.SpecContainer
+
+	for _, want := range plan.replace {
+		if err := a.removeContainer(ctx, want.Name); err != nil {
+			applied.Failures = append(applied.Failures, proto.ApplyFailure{
+				Container: want.Name, Deployment: want.Labels[proto.LabelDeployment],
+				Reason: "could not be replaced",
+			})
 			continue
 		}
+		if a.create(ctx, want, applied) {
+			started = append(started, want)
+		}
+	}
+
+	for _, want := range plan.create {
+		if a.create(ctx, want, applied) {
+			started = append(started, want)
+		}
+	}
+	return started
+}
+
+func (a *Agent) create(ctx context.Context, want proto.SpecContainer, applied *proto.Applied) bool {
+	if err := a.createContainer(ctx, want); err != nil {
+		applied.Failures = append(applied.Failures, proto.ApplyFailure{
+			Container: want.Name, Deployment: want.Labels[proto.LabelDeployment],
+			Reason: "could not be started",
+		})
+		slog.Error("could not start container", "container", want.Name, "error", err)
+		return false
+	}
+	applied.Created = append(applied.Created, want.Name)
+	return true
+}
+
+// gate waits for each newly started container that declares a check, and returns those that never
+// answered. One that was started under a new name is taken away again, since the version it was
+// meant to replace is still running and still serving.
+func (a *Agent) gate(ctx context.Context, started []proto.SpecContainer, applied *proto.Applied) map[string]bool {
+	unproven := make(map[string]bool)
+
+	for _, want := range started {
+		if want.HealthCheck == nil {
+			continue
+		}
+
+		outcome := proto.Rollout{Container: want.Name, Deployment: want.Labels[proto.LabelDeployment]}
+		if err := a.awaitHealthy(ctx, want.Name, want.HealthCheck); err != nil {
+			slog.Error("a new container never started serving", "container", want.Name, "error", err)
+			unproven[want.Name] = true
+			outcome.Reason = "This version started but never began answering, so it was not put in front of anyone."
+
+			if err := a.removeContainer(ctx, want.Name); err != nil {
+				slog.Error("could not remove a container that never served", "container", want.Name, "error", err)
+			}
+		} else {
+			outcome.Healthy = true
+		}
+		applied.Rollouts = append(applied.Rollouts, outcome)
+	}
+	return unproven
+}
+
+// retire takes away what is no longer wanted, once its replacement is answering. Waiting first
+// gives requests already in flight time to finish rather than being cut off mid-response.
+func (a *Agent) retire(ctx context.Context, plan rolloutPlan, drain bool, applied *proto.Applied) {
+	if len(plan.remove) == 0 {
+		return
+	}
+
+	if drain {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(a.drain):
+		}
+	}
+
+	for _, name := range plan.remove {
 		if err := a.removeContainer(ctx, name); err != nil {
 			applied.Failures = append(applied.Failures, proto.ApplyFailure{
 				Container: name, Reason: "could not be removed",
@@ -55,45 +206,23 @@ func (a *Agent) apply(ctx context.Context, spec *proto.Spec) proto.Applied {
 		}
 		applied.Removed = append(applied.Removed, name)
 	}
+}
 
-	if err := a.ensureNetwork(ctx); err != nil {
-		slog.Error("could not create the private network", "error", err)
+// withoutRoutesTo copies the specification with any route to an unproven container dropped, so
+// configuring the router cannot move traffic onto something that never answered.
+func withoutRoutesTo(spec *proto.Spec, unproven map[string]bool) *proto.Spec {
+	if len(unproven) == 0 {
+		return spec
 	}
 
-	for _, volume := range spec.Volumes {
-		if err := a.ensureVolume(ctx, volume); err != nil {
-			slog.Error("could not create volume", "volume", volume.Name, "error", err)
+	trimmed := *spec
+	trimmed.Routes = nil
+	for _, route := range spec.Routes {
+		if !unproven[route.Container] {
+			trimmed.Routes = append(trimmed.Routes, route)
 		}
 	}
-
-	for name, want := range desired {
-		current, exists := actual[name]
-		if exists && a.matches(current, want) {
-			applied.Unchanged++
-			continue
-		}
-		if exists {
-			// Docker cannot change a running container's shape, so replacing is the only way.
-			if err := a.removeContainer(ctx, name); err != nil {
-				applied.Failures = append(applied.Failures, proto.ApplyFailure{
-					Container: name, Reason: "could not be replaced",
-				})
-				continue
-			}
-		}
-		if err := a.createContainer(ctx, want); err != nil {
-			applied.Failures = append(applied.Failures, proto.ApplyFailure{
-				Container: name, Reason: "could not be started",
-			})
-			slog.Error("could not start container", "container", name, "error", err)
-			continue
-		}
-		applied.Created = append(applied.Created, name)
-	}
-
-	// Configured after containers exist, so a hostname is never pointed at something absent.
-	a.syncRouter(ctx, spec)
-	return applied
+	return &trimmed
 }
 
 // managedContainers returns only the containers this platform owns. Anything the customer
@@ -124,7 +253,7 @@ func (a *Agent) managedContainers(ctx context.Context, spec *proto.Spec) map[str
 
 // matches reports whether a running container already looks like what is wanted. Only what
 // cannot be changed in place is compared, since anything else means replacing it.
-func (a *Agent) matches(current proto.Container, want proto.SpecContainer) bool {
+func matches(current proto.Container, want proto.SpecContainer) bool {
 	if current.Image != want.Image {
 		return false
 	}

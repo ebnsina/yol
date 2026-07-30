@@ -164,6 +164,15 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Deploys do not drop requests. The new version is started alongside the one serving, and traffic
+  moves only once it answers; the previous version is left running for a few seconds afterwards so
+  requests already in flight finish. A container is named for its deployment, which is what lets
+  two versions run at once.
+- A version that starts but never answers fails the deploy and is taken away, with the version
+  already serving left exactly as it was. Nothing at all is removed on a pass where something
+  failed to come up, because a working old version is worth more than a tidy machine.
+- A service is checked by asking for the health path it named, or by connecting to its port when it
+  named none — starting a container proves nothing on its own.
 - Images are built on the customer's own server. Their code never reaches us and no build fleet
   runs on their behalf, so a deploy costs them nothing beyond the server they already pay for. A
   Dockerfile in the repository is always used as written; without one, how to build the app is
@@ -245,3 +254,11 @@ All notable changes to this project are recorded here, newest first. Format foll
   escalate. An organization can never be left without an owner.
 - Asking for an organization you do not belong to reports that it was not found rather than
   that you lack access, so responses cannot be used to discover which organizations exist.
+
+### Fixed
+
+- Setting a deployment's status never worked: the status was compared both as text and as its own
+  type in one statement, which the database refuses. Found by the first test to run it.
+- A deployment was marked live before the one it replaced stepped aside, which the rule allowing a
+  service only one live deployment refuses. They now happen the other way round, in one
+  transaction, so no reader sees the moment in between.

@@ -11,13 +11,15 @@ import (
 // Builds run on the customer's own machine, so the control plane's part is to ask for one and to
 // keep what came back. Nothing here touches Docker or reads any code.
 
-// BuildRecorder keeps what happened during a build. An interface so this package does not need to
-// know how deployments are stored, and so a build can be exercised without a database.
-type BuildRecorder interface {
+// DeployRecorder keeps what happened while deploying. An interface so this package does not need to
+// know how deployments are stored, and so a deploy can be exercised without a database.
+type DeployRecorder interface {
 	// RecordBuildOutput keeps output as it arrives, which is what a user watches while waiting.
 	RecordBuildOutput(ctx context.Context, orgID uuid.UUID, output proto.BuildOutput)
 	// FinishBuild records how a build ended, either way.
 	FinishBuild(ctx context.Context, orgID uuid.UUID, result proto.BuildResult)
+	// FinishRollout records whether a version began serving once it was started.
+	FinishRollout(ctx context.Context, orgID uuid.UUID, rollout proto.Rollout)
 }
 
 // SendBuild asks a connected agent to build a commit.

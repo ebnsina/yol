@@ -20,7 +20,7 @@ type AgentHandler struct {
 	hub     *Hub
 	streams *Streams
 	signer  *proto.SigningKey
-	builds  BuildRecorder
+	deploys DeployRecorder
 }
 
 // NewAgentHandler builds the agent endpoints.
@@ -29,9 +29,9 @@ func NewAgentHandler(
 	hub *Hub,
 	streams *Streams,
 	signer *proto.SigningKey,
-	builds BuildRecorder,
+	deploys DeployRecorder,
 ) *AgentHandler {
-	return &AgentHandler{svc: svc, hub: hub, streams: streams, signer: signer, builds: builds}
+	return &AgentHandler{svc: svc, hub: hub, streams: streams, signer: signer, deploys: deploys}
 }
 
 // Routes registers the agent endpoints.
@@ -224,6 +224,9 @@ func (h *AgentHandler) handle(ctx context.Context, c *Connection, envelope *prot
 			return
 		}
 		h.svc.RecordApplied(ctx, c.Identity, applied)
+		for _, rollout := range applied.Rollouts {
+			h.deploys.FinishRollout(ctx, c.Identity.OrgID, rollout)
+		}
 
 	case proto.TypeLogChunk:
 		var chunk proto.LogChunk
@@ -237,14 +240,14 @@ func (h *AgentHandler) handle(ctx context.Context, c *Connection, envelope *prot
 		if err := envelope.Into(&output); err != nil {
 			return
 		}
-		h.builds.RecordBuildOutput(ctx, c.Identity.OrgID, output)
+		h.deploys.RecordBuildOutput(ctx, c.Identity.OrgID, output)
 
 	case proto.TypeBuildResult:
 		var result proto.BuildResult
 		if err := envelope.Into(&result); err != nil {
 			return
 		}
-		h.builds.FinishBuild(ctx, c.Identity.OrgID, result)
+		h.deploys.FinishBuild(ctx, c.Identity.OrgID, result)
 
 	default:
 		slog.Debug("ignoring message this build does not handle",

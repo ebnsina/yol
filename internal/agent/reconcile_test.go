@@ -131,33 +131,32 @@ func TestMatchesDetectsWhatNeedsReplacing(t *testing.T) {
 		Ports:  []int{30001},
 	}
 
-	a := &Agent{}
-	if !a.matches(running, want) {
+	if !matches(running, want) {
 		t.Error("an already-correct container was reported as needing replacement")
 	}
 
 	// A new deployment must replace the container, or the old version keeps serving.
 	newer := want
 	newer.Labels = map[string]string{proto.LabelDeployment: "deploy-2"}
-	if a.matches(running, newer) {
+	if matches(running, newer) {
 		t.Error("a new deployment did not require replacing the container")
 	}
 
 	stopped := running
 	stopped.State = "exited"
-	if a.matches(stopped, want) {
+	if matches(stopped, want) {
 		t.Error("a stopped container was treated as already correct")
 	}
 
 	rebuilt := want
 	rebuilt.Image = "registry/app:def"
-	if a.matches(running, rebuilt) {
+	if matches(running, rebuilt) {
 		t.Error("a different image did not require replacing the container")
 	}
 
 	moved := want
 	moved.Ports = []proto.PortMapping{{HostPort: 30002, ContainerPort: 3000}}
-	if a.matches(running, moved) {
+	if matches(running, moved) {
 		t.Error("a different published port did not require replacing the container")
 	}
 }

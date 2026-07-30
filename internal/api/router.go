@@ -41,7 +41,7 @@ func New(d Deps) http.Handler {
 	server.NewHandler(d.Servers, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
 
 	// Agents authenticate with their own credential rather than a person's session.
-	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer, deploy.NewBuilds(d.DB)).Routes(mux)
+	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer, deploy.NewDeployments(d.DB)).Routes(mux)
 
 	// Asked by the routers on customer servers, so it carries no session.
 	deploy.NewTLSHandler(d.DB).Routes(mux)

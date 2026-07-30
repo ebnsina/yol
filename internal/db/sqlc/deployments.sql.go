@@ -699,21 +699,26 @@ func (q *Queries) SetDeploymentReplaced(ctx context.Context, arg SetDeploymentRe
 
 const setDeploymentStatus = `-- name: SetDeploymentStatus :exec
 UPDATE deployments
-SET status = $2,
-    failure_reason = $3,
-    started_at = COALESCE(started_at, CASE WHEN $2 = 'building' THEN now() END),
-    finished_at = CASE WHEN $2 IN ('live', 'failed') THEN now() ELSE finished_at END
-WHERE id = $1
+SET status = $1::deployment_status,
+    failure_reason = $2,
+    started_at = COALESCE(started_at,
+        CASE WHEN $1::deployment_status = 'building' THEN now() END),
+    finished_at = CASE
+        WHEN $1::deployment_status IN ('live', 'failed') THEN now()
+        ELSE finished_at END
+WHERE id = $3
 `
 
 type SetDeploymentStatusParams struct {
-	ID            uuid.UUID
 	Status        DeploymentStatus
 	FailureReason *string
+	ID            uuid.UUID
 }
 
+// The status is cast explicitly because it is read more than once here, and the same placeholder
+// compared against text and against the enum cannot be given one type.
 func (q *Queries) SetDeploymentStatus(ctx context.Context, arg SetDeploymentStatusParams) error {
-	_, err := q.db.Exec(ctx, setDeploymentStatus, arg.ID, arg.Status, arg.FailureReason)
+	_, err := q.db.Exec(ctx, setDeploymentStatus, arg.Status, arg.FailureReason, arg.ID)
 	return err
 }
 

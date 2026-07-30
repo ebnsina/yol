@@ -137,6 +137,9 @@ type Applied struct {
 	// Populated when something could not be applied, in plain language, so the interface can
 	// explain a failed deploy rather than showing a spinner forever.
 	Failures []ApplyFailure `json:"failures,omitempty"`
+	// One entry per version started and checked this pass, so a deployment is marked live or
+	// failed from what the agent saw rather than guessed at from container names.
+	Rollouts []Rollout `json:"rollouts,omitempty"`
 	// Set when the agent refused because it is in watch-only mode.
 	Refused string `json:"refused,omitempty"`
 }
@@ -145,6 +148,18 @@ type Applied struct {
 type ApplyFailure struct {
 	Container string `json:"container"`
 	Reason    string `json:"reason"`
+	// Which deployment the container belonged to, so the right one is marked failed.
+	Deployment string `json:"deployment,omitempty"`
+}
+
+// Rollout is how one new version fared: it either began answering and was put in front of people,
+// or it did not and was taken away with the previous version left serving.
+type Rollout struct {
+	Container  string `json:"container"`
+	Deployment string `json:"deployment,omitempty"`
+	Healthy    bool   `json:"healthy"`
+	// Plain language, for showing rather than logging.
+	Reason string `json:"reason,omitempty"`
 }
 
 // TailLogs asks the agent to stream a container's logs. Allowed for any container, ours or

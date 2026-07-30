@@ -15,13 +15,18 @@ LIMIT $2;
 -- name: GetLiveDeployment :one
 SELECT * FROM deployments WHERE service_id = $1 AND status = 'live';
 
+-- The status is cast explicitly because it is read more than once here, and the same placeholder
+-- compared against text and against the enum cannot be given one type.
 -- name: SetDeploymentStatus :exec
 UPDATE deployments
-SET status = $2,
-    failure_reason = $3,
-    started_at = COALESCE(started_at, CASE WHEN $2 = 'building' THEN now() END),
-    finished_at = CASE WHEN $2 IN ('live', 'failed') THEN now() ELSE finished_at END
-WHERE id = $1;
+SET status = sqlc.arg(status)::deployment_status,
+    failure_reason = sqlc.arg(failure_reason),
+    started_at = COALESCE(started_at,
+        CASE WHEN sqlc.arg(status)::deployment_status = 'building' THEN now() END),
+    finished_at = CASE
+        WHEN sqlc.arg(status)::deployment_status IN ('live', 'failed') THEN now()
+        ELSE finished_at END
+WHERE id = sqlc.arg(id);
 
 -- name: SetDeploymentImage :exec
 UPDATE deployments SET image_ref = $2, commit_sha = COALESCE($3, commit_sha) WHERE id = $1;

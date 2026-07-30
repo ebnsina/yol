@@ -50,6 +50,10 @@ type Agent struct {
 	tails     *tails
 	verifier  *proto.Verifier
 
+	// How long a replaced container is left alone before being taken away, so requests already
+	// in flight finish rather than being cut off. A field so a test need not wait it out.
+	drain time.Duration
+
 	// The specification currently held, guarded because reconciliation and the connection
 	// read it from different goroutines.
 	specMu sync.RWMutex
@@ -71,7 +75,13 @@ type Collector interface {
 // New builds an agent. It starts in watch-only mode and is told otherwise by the control
 // plane, so a failure to establish the mode leaves it unable to change anything.
 func New(cfg *config.Agent, collector Collector) *Agent {
-	return &Agent{cfg: cfg, collector: collector, mode: proto.ModeWatch, tails: newTails()}
+	return &Agent{
+		cfg:       cfg,
+		collector: collector,
+		mode:      proto.ModeWatch,
+		tails:     newTails(),
+		drain:     defaultDrain,
+	}
 }
 
 // Run connects and keeps working until the context ends. It never returns because of a

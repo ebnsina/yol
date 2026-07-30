@@ -51,6 +51,23 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 			return nil
 		}
 
+		// What each service on this server should be running, from the deployment that is live.
+		// A container is named for its deployment, so the next one is started alongside rather
+		// than in place of it, which is what leaves the old version serving until the new one
+		// answers.
+		placements, err := q.ListLivePlacementsForServer(ctx, identity.ServerID)
+		if err != nil {
+			return err
+		}
+		live := make(map[uuid.UUID]sqlc.ListLivePlacementsForServerRow, len(placements))
+		for _, placement := range placements {
+			if placement.ImageRef == nil {
+				continue // built nothing yet, so there is nothing to run
+			}
+			live[placement.ServiceID] = placement
+			spec.Containers = append(spec.Containers, containerFor(placement, identity.OrgID))
+		}
+
 		if router := routerFor(row, identity.OrgID); router != nil {
 			spec.Containers = append(spec.Containers, *router)
 			spec.Volumes = append(spec.Volumes, proto.SpecVolume{
@@ -68,22 +85,18 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 				return err
 			}
 			for _, domain := range domains {
-				port := 80
-				if domain.HealthPort != nil {
-					port = int(*domain.HealthPort)
+				placement, running := live[domain.ServiceID]
+				if !running {
+					continue // nothing deployed yet, so there is nowhere to send the hostname
 				}
 				spec.Routes = append(spec.Routes, proto.SpecRoute{
 					Host:      domain.Hostname,
-					Container: containerNameFor(domain.ServiceID),
-					Port:      port,
+					Container: placement.ContainerName,
+					Port:      servicePort(domain.HealthPort),
 				})
 			}
 
-			services, err := q.ListServicesForServer(ctx, &identity.ServerID)
-			if err != nil {
-				return err
-			}
-			if fallback := fallbackRoute(services); fallback != nil {
+			if fallback := fallbackRoute(placements); fallback != nil {
 				spec.Routes = append(spec.Routes, *fallback)
 			}
 		}
@@ -116,37 +129,67 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 	return spec, nil
 }
 
+// containerFor describes what one service should be running, taken from its live deployment.
+//
+// Nothing is published to the machine: the router reaches an app by name over the private network,
+// so an app is not exposed to the world except through the router.
+func containerFor(placement sqlc.ListLivePlacementsForServerRow, orgID uuid.UUID) proto.SpecContainer {
+	container := proto.SpecContainer{
+		Name:  placement.ContainerName,
+		Image: *placement.ImageRef,
+		Labels: proto.ManagedLabels(orgID.String(), placement.ProjectID.String(),
+			placement.EnvironmentID.String(), placement.ServiceID.String(),
+			placement.DeploymentID.String(), proto.RoleApp),
+		Network:          proto.Network,
+		MemoryLimitBytes: placement.MemoryLimitBytes,
+		RestartPolicy:    "unless-stopped",
+	}
+
+	// How the agent decides this version is serving before traffic is moved onto it. A path is
+	// asked for when the service named one, since accepting a connection is not the same as being
+	// able to answer a request.
+	gate := &proto.HealthGate{Port: servicePort(placement.HealthPort)}
+	if placement.HealthPath != nil && *placement.HealthPath != "" {
+		gate.HTTPPath = *placement.HealthPath
+	}
+	container.HealthCheck = gate
+	return container
+}
+
 // fallbackRoute is where requests arriving by the server's address go, so an app can be opened
 // before a domain has been added to it.
 //
 // Only when the server runs a single app is this unambiguous. With several, an address says nothing
 // about which one was meant, so nothing is served by address and each is reached by its own name.
-func fallbackRoute(services []sqlc.ListServicesForServerRow) *proto.SpecRoute {
-	var only *sqlc.ListServicesForServerRow
-	for i, service := range services {
-		if service.Kind != sqlc.ServiceKindApp {
+func fallbackRoute(placements []sqlc.ListLivePlacementsForServerRow) *proto.SpecRoute {
+	var only *sqlc.ListLivePlacementsForServerRow
+	for i, placement := range placements {
+		if placement.Kind != sqlc.ServiceKindApp || placement.ImageRef == nil {
 			continue
 		}
 		if only != nil {
 			return nil
 		}
-		only = &services[i]
+		only = &placements[i]
 	}
 	if only == nil {
 		return nil
 	}
-
-	port := 80
-	if only.HealthPort != nil {
-		port = int(*only.HealthPort)
-	}
-	return &proto.SpecRoute{Container: containerNameFor(only.ID), Port: port}
+	return &proto.SpecRoute{Container: only.ContainerName, Port: servicePort(only.HealthPort)}
 }
 
-// containerNameFor is how a service's container is named on a machine. Derived from the service
-// rather than stored, so the control plane and the agent cannot disagree about it.
-func containerNameFor(serviceID uuid.UUID) string {
-	return "yol-" + serviceID.String()[:12]
+// servicePort is where a service listens, defaulting to the usual one when it never said.
+func servicePort(port *int32) int {
+	if port == nil || *port == 0 {
+		return 80
+	}
+	return int(*port)
+}
+
+// ContainerNameFor is how a service's container is named on a machine. The deployment is part of
+// the name, so a new version is started alongside the one serving rather than in place of it.
+func ContainerNameFor(serviceID, deploymentID uuid.UUID) string {
+	return "yol-" + serviceID.String()[:12] + "-" + deploymentID.String()[:8]
 }
 
 // routerFor describes the router, or nothing when this server does not need one.
