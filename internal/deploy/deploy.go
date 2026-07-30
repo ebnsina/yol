@@ -129,7 +129,7 @@ func (p *Projects) Deploy(ctx context.Context, target DeployTarget, commitSHA, r
 		request = proto.BuildRequest{
 			DeploymentID: deploymentID.String(),
 			ServiceID:    target.ServiceID.String(),
-			SourceURL:    github.SourceURL(*target.RepoFullName, commitSHA),
+			SourceURL:    p.code.SourceURL(*target.RepoFullName, commitSHA),
 			CommitSHA:    commitSHA,
 			SourceToken:  token,
 			ImageRef:     ImageRefFor(target.ServiceID, commitSHA),

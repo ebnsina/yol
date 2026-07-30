@@ -28,7 +28,6 @@ import (
 const Provider = "github"
 
 const (
-	apiBase = "https://api.github.com"
 	// Sent so a future change in the API does not change what we get back without us asking.
 	apiVersion = "2022-11-28"
 
@@ -51,8 +50,8 @@ type App struct {
 	key   *rsa.PrivateKey
 
 	client *http.Client
-	// Where requests go. Set only by tests, so they never reach the real GitHub.
-	baseOverride string
+	// Where GitHub is.
+	apiBase string
 
 	// Installation tokens are reused until they are nearly expired, so opening a screen that lists
 	// repositories does not mint one every time.
@@ -67,17 +66,24 @@ type cachedToken struct {
 
 // NewApp builds the client. The key is parsed here so a bad one stops the process at startup
 // rather than at the first deploy somebody attempts.
-func NewApp(appID, slug string, privateKeyPEM []byte) (*App, error) {
+//
+// apiBase is where GitHub is. Passed in rather than fixed, so the harness can prove a deploy
+// against a stand-in without any of this code behaving differently.
+func NewApp(appID, slug string, privateKeyPEM []byte, apiBase string) (*App, error) {
 	key, err := parsePrivateKey(privateKeyPEM)
 	if err != nil {
 		return nil, err
 	}
+	if apiBase == "" {
+		return nil, errors.New("github: no address was given for GitHub")
+	}
 	return &App{
-		appID:  appID,
-		slug:   slug,
-		key:    key,
-		client: &http.Client{Timeout: requestTimeout},
-		tokens: make(map[int64]cachedToken),
+		appID:   appID,
+		slug:    slug,
+		key:     key,
+		apiBase: strings.TrimSuffix(apiBase, "/"),
+		client:  &http.Client{Timeout: requestTimeout},
+		tokens:  make(map[int64]cachedToken),
 	}, nil
 }
 
@@ -289,8 +295,8 @@ func (a *App) LatestCommit(ctx context.Context, installationID, fullName, branch
 
 // SourceURL is where one commit of a repository can be fetched as an archive. Handed to the agent
 // with a token, so the code goes straight from GitHub to the customer's server and never through us.
-func SourceURL(fullName, commitSHA string) string {
-	return apiBase + "/repos/" + fullName + "/tarball/" + commitSHA
+func (a *App) SourceURL(fullName, commitSHA string) string {
+	return a.apiBase + "/repos/" + fullName + "/tarball/" + commitSHA
 }
 
 // call makes one request and reads the answer.
@@ -339,9 +345,4 @@ func (a *App) call(ctx context.Context, method, path, token string, body, into a
 }
 
 // base is where requests go.
-func (a *App) base() string {
-	if a.baseOverride != "" {
-		return a.baseOverride
-	}
-	return apiBase
-}
+func (a *App) base() string { return a.apiBase }

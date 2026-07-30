@@ -33,6 +33,9 @@ type API struct {
 	GitHubAppSlug       string
 	GitHubPrivateKey    []byte
 	GitHubWebhookSecret string
+	// Where GitHub is. The real value is https://api.github.com; the harness points this at a
+	// stand-in so a deploy can be proven end to end without a real repository.
+	GitHubAPIURL *url.URL
 
 	// The parent name free subdomains are handed out from, such as "yol.app". Required to be
 	// present, and may be empty: empty means none are handed out and an app is reached by the
@@ -82,6 +85,7 @@ func LoadAPI() (*API, error) {
 		GitHubAppSlug:       l.str("YOL_GITHUB_APP_SLUG"),
 		GitHubPrivateKey:    l.pem("YOL_GITHUB_PRIVATE_KEY"),
 		GitHubWebhookSecret: l.str("YOL_GITHUB_WEBHOOK_SECRET"),
+		GitHubAPIURL:        l.url("YOL_GITHUB_API_URL"),
 		AppDomain:           l.optional("YOL_APP_DOMAIN"),
 	}
 	return cfg, l.err()

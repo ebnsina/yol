@@ -32,6 +32,8 @@ type Code interface {
 	// LatestCommit is what the head of a branch points at, so deploying by hand means the same
 	// thing as pushing to it.
 	LatestCommit(ctx context.Context, installationID, fullName, branch string) (string, error)
+	// SourceURL is where one commit is fetched as an archive.
+	SourceURL(fullName, commitSHA string) string
 }
 
 // Installation is what a client is shown about access we were granted.

@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// apiBaseForTests stands in for GitHub where a test never makes a request.
+const apiBaseForTests = "https://api.github.test"
+
 // testKey is generated per run rather than committed, so no usable key ever sits in the repository.
 func testKey(t *testing.T) (*rsa.PrivateKey, []byte) {
 	t.Helper()
@@ -37,14 +40,13 @@ func standIn(t *testing.T, handler http.HandlerFunc) (*App, *httptest.Server) {
 	t.Helper()
 
 	_, encoded := testKey(t)
-	app, err := NewApp("123456", "yol", encoded)
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	app, err := NewApp("123456", "yol", encoded, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	app.baseOverride = server.URL
 	return app, server
 }
 
@@ -52,7 +54,7 @@ func standIn(t *testing.T, handler http.HandlerFunc) (*App, *httptest.Server) {
 // when the app was created.
 func TestBothKeyEncodingsAreAccepted(t *testing.T) {
 	key, pkcs1 := testKey(t)
-	if _, err := NewApp("1", "yol", pkcs1); err != nil {
+	if _, err := NewApp("1", "yol", pkcs1, apiBaseForTests); err != nil {
 		t.Errorf("the older encoding was refused: %v", err)
 	}
 
@@ -61,14 +63,14 @@ func TestBothKeyEncodingsAreAccepted(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkcs8 := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: raw})
-	if _, err := NewApp("1", "yol", pkcs8); err != nil {
+	if _, err := NewApp("1", "yol", pkcs8, apiBaseForTests); err != nil {
 		t.Errorf("the newer encoding was refused: %v", err)
 	}
 }
 
 // A bad key must stop the process at startup rather than at the first deploy somebody attempts.
 func TestSomethingThatIsNotAKeyIsRefused(t *testing.T) {
-	if _, err := NewApp("1", "yol", []byte("not a key at all")); err == nil {
+	if _, err := NewApp("1", "yol", []byte("not a key at all"), apiBaseForTests); err == nil {
 		t.Error("something that is not a key was accepted")
 	}
 }
@@ -77,7 +79,7 @@ func TestSomethingThatIsNotAKeyIsRefused(t *testing.T) {
 // not issued in the future, and not lasting longer than allowed.
 func TestTheTokenProvingWeAreTheApplicationVerifies(t *testing.T) {
 	key, encoded := testKey(t)
-	app, err := NewApp("123456", "yol", encoded)
+	app, err := NewApp("123456", "yol", encoded, apiBaseForTests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +261,12 @@ func TestAFailureFromGitHubIsExplained(t *testing.T) {
 // The archive address is what the agent is handed, so it has to name the exact commit rather than a
 // branch that may have moved on by the time the build starts.
 func TestTheSourceAddressNamesTheExactCommit(t *testing.T) {
-	url := SourceURL("owner/repo", "abcdef1234567890")
+	_, encoded := testKey(t)
+	app, err := NewApp("1", "yol", encoded, "https://api.github.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := app.SourceURL("owner/repo", "abcdef1234567890")
 
 	if !strings.HasSuffix(url, "/repos/owner/repo/tarball/abcdef1234567890") {
 		t.Errorf("url = %q, want it to name the commit", url)

@@ -164,6 +164,13 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- A stand-in for GitHub, so the whole path from a push to a running app can be proven with no
+  repository, no installation and no network. The address of GitHub is configuration, so nothing in
+  the control plane or the agent behaves differently when it is pointed at the stand-in.
+- `make verify-phase2` puts a deploy through its promises against a real machine: a commit becomes
+  an image built on that machine, what was built is what answers, replacing it drops no requests, a
+  version that never answers fails the deploy with the previous one left serving, and going back
+  rebuilds nothing.
 - A custom domain needs nothing bought from us: the name is the customer's and so is the server, so
   adding a hostname is what turns HTTPS on. The record to create is spelled out rather than
   described, and the hostname is only served once it is shown to point at that server — otherwise a
@@ -312,6 +319,11 @@ All notable changes to this project are recorded here, newest first. Format foll
 
 ### Fixed
 
+- A deploy could never have finished: the container of a version going out was left out of what a
+  server was told to run until that version was live, and it could only become live once the server
+  had started it and reported that it answered. Both the version serving and the one going out are
+  now in the desired state, with traffic pointed at whichever is serving until the new one is
+  reported as answering. Found by running a real deploy rather than by any test of a part.
 - Setting a deployment's status never worked: the status was compared both as text and as its own
   type in one statement, which the database refuses. Found by the first test to run it.
 - A deployment was marked live before the one it replaced stepped aside, which the rule allowing a

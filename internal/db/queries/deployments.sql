@@ -48,10 +48,11 @@ RETURNING *;
 -- name: ListPlacements :many
 SELECT * FROM placements WHERE deployment_id = $1;
 
--- Every container that should be running on one server, from the live deployment of each of its
--- services. This is what the desired state for a server is built from.
+-- Every container that should be running on one server: the deployment serving each service, and
+-- one going out alongside it. A version being rolled out has to be in the desired state or the
+-- agent would never start it, and it cannot become live until the agent reports that it answers.
 -- name: ListLivePlacementsForServer :many
-SELECT pl.*, d.image_ref, d.id AS deployment_id, s.id AS service_id, s.name AS service_name,
+SELECT pl.*, d.image_ref, d.status, d.id AS deployment_id, s.id AS service_id, s.name AS service_name,
        s.kind, s.memory_limit_bytes, s.health_path, s.health_port,
        e.id AS environment_id, e.name AS environment_name,
        p.id AS project_id, p.slug AS project_slug
@@ -60,8 +61,8 @@ JOIN deployments d ON d.id = pl.deployment_id
 JOIN services s ON s.id = d.service_id
 JOIN environments e ON e.id = s.env_id
 JOIN projects p ON p.id = e.project_id
-WHERE pl.server_id = $1 AND d.status = 'live'
-ORDER BY p.slug, e.name, s.name;
+WHERE pl.server_id = $1 AND d.status IN ('live', 'deploying')
+ORDER BY p.slug, e.name, s.name, d.created_at;
 
 -- name: AppendDeploymentLog :exec
 INSERT INTO deployment_logs (id, org_id, deployment_id, stream, text)

@@ -134,6 +134,10 @@ test-live: ## Run checks against the harness servers (needs make vps-up)
 verify-phase1: ## Check the promises made about a customer's server, against the harness
 	./dev/verify-phase1.sh
 
+.PHONY: verify-phase2
+verify-phase2: ## Check that a push deploys and drops no requests, against the harness
+	./dev/verify-phase2.sh
+
 .PHONY: lint
 lint: ## Vet and format check
 	go vet ./...

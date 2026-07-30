@@ -26,6 +26,7 @@ func validAPIEnv() map[string]string {
 		"YOL_GITHUB_APP_SLUG":       "yol",
 		"YOL_GITHUB_PRIVATE_KEY":    "-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----",
 		"YOL_GITHUB_WEBHOOK_SECRET": "a-shared-secret",
+		"YOL_GITHUB_API_URL":        "https://api.github.com",
 		// Present and empty: no subdomains are handed out yet.
 		"YOL_APP_DOMAIN": "",
 	}

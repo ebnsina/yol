@@ -61,12 +61,20 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 		if err != nil {
 			return err
 		}
-		live := make(map[uuid.UUID]sqlc.ListLivePlacementsForServerRow, len(placements))
+		serving := make(map[uuid.UUID]sqlc.ListLivePlacementsForServerRow, len(placements))
 		for _, placement := range placements {
 			if placement.ImageRef == nil {
 				continue // built nothing yet, so there is nothing to run
 			}
-			live[placement.ServiceID] = placement
+
+			// Where traffic goes. A version going out is started and checked, but nothing is sent to
+			// it until it is the one serving, so a version that never answers is invisible to
+			// anybody using the app.
+			existing, seen := serving[placement.ServiceID]
+			if !seen || (existing.Status != sqlc.DeploymentStatusLive &&
+				placement.Status == sqlc.DeploymentStatusLive) {
+				serving[placement.ServiceID] = placement
+			}
 
 			// What the app runs with. Read here rather than kept anywhere in the open: they are
 			// decrypted only to be handed to the machine that runs the app.
@@ -96,7 +104,7 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 				return err
 			}
 			for _, domain := range domains {
-				placement, running := live[domain.ServiceID]
+				placement, running := serving[domain.ServiceID]
 				if !running {
 					continue // nothing deployed yet, so there is nowhere to send the hostname
 				}
@@ -107,7 +115,7 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 				})
 			}
 
-			if fallback := fallbackRoute(placements); fallback != nil {
+			if fallback := fallbackRoute(serving); fallback != nil {
 				spec.Routes = append(spec.Routes, *fallback)
 			}
 		}
@@ -195,18 +203,17 @@ func containerFor(placement sqlc.ListLivePlacementsForServerRow, orgID uuid.UUID
 //
 // Only when the server runs a single app is this unambiguous. With several, an address says nothing
 // about which one was meant, so nothing is served by address and each is reached by its own name.
-func fallbackRoute(placements []sqlc.ListLivePlacementsForServerRow) *proto.SpecRoute {
-	var only *sqlc.ListLivePlacementsForServerRow
-	for i, placement := range placements {
+func fallbackRoute(serving map[uuid.UUID]sqlc.ListLivePlacementsForServerRow) *proto.SpecRoute {
+	var only sqlc.ListLivePlacementsForServerRow
+	found := 0
+	for _, placement := range serving {
 		if placement.Kind != sqlc.ServiceKindApp || placement.ImageRef == nil {
 			continue
 		}
-		if only != nil {
-			return nil
-		}
-		only = &placements[i]
+		only = placement
+		found++
 	}
-	if only == nil {
+	if found != 1 {
 		return nil
 	}
 	return &proto.SpecRoute{Container: only.ContainerName, Port: servicePort(only.HealthPort)}

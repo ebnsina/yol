@@ -132,6 +132,7 @@ func (d *Deployments) FinishRollout(ctx context.Context, orgID uuid.UUID, rollou
 		return
 	}
 
+	var servers []uuid.UUID
 	err = d.pool.InOrg(ctx, orgID, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
 
@@ -160,12 +161,35 @@ func (d *Deployments) FinishRollout(ctx context.Context, orgID uuid.UUID, rollou
 		}); err != nil {
 			return err
 		}
-		return q.SetDeploymentStatus(ctx, sqlc.SetDeploymentStatusParams{
+		if err := q.SetDeploymentStatus(ctx, sqlc.SetDeploymentStatusParams{
 			ID:     deploymentID,
 			Status: sqlc.DeploymentStatusLive,
-		})
+		}); err != nil {
+			return err
+		}
+
+		placements, err := q.ListPlacements(ctx, deploymentID)
+		if err != nil {
+			return err
+		}
+		for _, placement := range placements {
+			servers = append(servers, placement.ServerID)
+		}
+		return nil
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		slog.Error("could not record how a rollout ended", "deployment", deploymentID, "error", err)
+		return
+	}
+
+	// This version is now the one serving, so the server is handed its desired state again: that is
+	// what moves traffic onto it and retires the one it replaced.
+	if d.agents == nil {
+		return
+	}
+	for _, serverID := range servers {
+		if err := d.agents.Reconcile(ctx, serverID); err != nil {
+			slog.Warn("could not move traffic to a version that answered", "server", serverID, "error", err)
+		}
 	}
 }

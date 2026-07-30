@@ -8,6 +8,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// serving is the map the specification builds routes from: one placement per service, whichever is
+// the one traffic should reach.
+func serving(placements ...sqlc.ListLivePlacementsForServerRow) map[uuid.UUID]sqlc.ListLivePlacementsForServerRow {
+	out := map[uuid.UUID]sqlc.ListLivePlacementsForServerRow{}
+	for _, placement := range placements {
+		out[placement.ServiceID] = placement
+	}
+	return out
+}
+
 func livePlacement(kind sqlc.ServiceKind, port int32) sqlc.ListLivePlacementsForServerRow {
 	image := "yol/app:abc123"
 	serviceID := uuid.New()
@@ -28,7 +38,7 @@ func livePlacement(kind sqlc.ServiceKind, port int32) sqlc.ListLivePlacementsFor
 func TestASingleAppIsReachedByTheServersAddress(t *testing.T) {
 	app := livePlacement(sqlc.ServiceKindApp, 3000)
 
-	route := fallbackRoute([]sqlc.ListLivePlacementsForServerRow{app})
+	route := fallbackRoute(serving(app))
 	if route == nil {
 		t.Fatal("nothing answers requests arriving by address, so the app cannot be opened")
 	}
@@ -43,10 +53,10 @@ func TestASingleAppIsReachedByTheServersAddress(t *testing.T) {
 // With more than one app on a machine an address does not say which was meant, and guessing would
 // serve one customer's project at another's request.
 func TestNothingIsServedByAddressWhenSeveralAppsShareAServer(t *testing.T) {
-	placements := []sqlc.ListLivePlacementsForServerRow{
+	placements := serving(
 		livePlacement(sqlc.ServiceKindApp, 3000),
 		livePlacement(sqlc.ServiceKindApp, 8080),
-	}
+	)
 
 	if route := fallbackRoute(placements); route != nil {
 		t.Errorf("requests by address reach %s, chosen from two apps", route.Container)
@@ -55,10 +65,10 @@ func TestNothingIsServedByAddressWhenSeveralAppsShareAServer(t *testing.T) {
 
 // Databases are not web servers, so they must never be what an address reaches.
 func TestServicesThatAreNotAppsAreNeverServedByAddress(t *testing.T) {
-	placements := []sqlc.ListLivePlacementsForServerRow{
+	placements := serving(
 		livePlacement(sqlc.ServiceKindPostgres, 5432),
 		livePlacement(sqlc.ServiceKindRedis, 6379),
-	}
+	)
 
 	if route := fallbackRoute(placements); route != nil {
 		t.Errorf("requests by address reach %s, which serves no web traffic", route.Container)
@@ -66,7 +76,7 @@ func TestServicesThatAreNotAppsAreNeverServedByAddress(t *testing.T) {
 }
 
 func TestAServerWithNothingDeployedServesNothingByAddress(t *testing.T) {
-	if route := fallbackRoute(nil); route != nil {
+	if route := fallbackRoute(serving()); route != nil {
 		t.Errorf("requests by address reach %s on a server running nothing", route.Container)
 	}
 }
@@ -77,7 +87,7 @@ func TestAnAppWithNothingBuiltIsNotServedByAddress(t *testing.T) {
 	placement := livePlacement(sqlc.ServiceKindApp, 3000)
 	placement.ImageRef = nil
 
-	if route := fallbackRoute([]sqlc.ListLivePlacementsForServerRow{placement}); route != nil {
+	if route := fallbackRoute(serving(placement)); route != nil {
 		t.Errorf("requests by address reach %s, which has no image to run", route.Container)
 	}
 }
@@ -87,7 +97,7 @@ func TestAnAppWithNoPortGivenUsesTheUsualOne(t *testing.T) {
 	placement := livePlacement(sqlc.ServiceKindApp, 0)
 	placement.HealthPort = nil
 
-	route := fallbackRoute([]sqlc.ListLivePlacementsForServerRow{placement})
+	route := fallbackRoute(serving(placement))
 	if route == nil || route.Port != 80 {
 		t.Fatalf("route = %+v, want port 80", route)
 	}

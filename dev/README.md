@@ -60,8 +60,24 @@ setup and reconciliation, that a container carrying our label is removed while t
 that logs stream from a container we did not create, and that a watched server has nothing
 whatsoever created on it — compared byte for byte before and after.
 
-It rebuilds the database and reinstalls the agent on all three stand-in servers, so it takes a
-few minutes and should not be run against anything you care about.
+`make verify-phase2` runs the promise a deploy makes: a commit becomes an image built on the
+server itself, what was built is what answers, replacing it drops no requests at all, a version
+that never answers fails the deploy with the old one left serving, and going back to a previous
+version rebuilds nothing.
+
+Both rebuild the database and reinstall the agent on the stand-in servers, so they take a few
+minutes and should not be run against anything you care about.
+
+## Standing in for GitHub
+
+`dev/fake-github` answers as GitHub does for the parts a deploy uses: a token for an
+installation, the repositories it covers, what a branch points at, and the code as an archive.
+It serves two commits differing only in what the app answers with, which is what makes "did
+traffic actually move" a question with an answer.
+
+Nothing in the control plane or the agent behaves differently: the address of GitHub is
+configuration (`YOL_GITHUB_API_URL`), and `verify-phase2` points it at the stand-in. So a deploy
+can be proven end to end with no repository, no installation and no network.
 
 ## The control plane's address
 

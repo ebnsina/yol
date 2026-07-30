@@ -2,6 +2,8 @@ package deploy
 
 import (
 	"context"
+	"encoding/binary"
+	"strconv"
 	"testing"
 	"time"
 
@@ -53,8 +55,12 @@ func (f *fixture) deployable(t *testing.T, projects *Projects) (*org.Membership,
 		t.Fatalf("assign a server: %v", err)
 	}
 
-	// Recorded directly, since granting access on GitHub is not something a test can do.
-	installation, repository := "42", "987"
+	// Recorded directly, since granting access on GitHub is not something a test can do. The
+	// identifier is unique to this fixture because an installation belongs to one organization and
+	// the column says so, which a shared value would trip over.
+	// Numeric, as GitHub's own identifiers are, since the code parses them as numbers.
+	installation := strconv.FormatUint(uint64(binary.BigEndian.Uint32(f.orgID[:4])), 10)
+	repository := strconv.FormatUint(uint64(binary.BigEndian.Uint32(f.orgID[4:8])), 10)
 	err = f.pool.InOrgAsUser(ctx, f.orgID, userID, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
 		if _, err := q.CreateInstallation(ctx, sqlc.CreateInstallationParams{
@@ -429,4 +435,8 @@ func (c *fakeCode) Installation(context.Context, int64) (*github.Installation, e
 
 func (c *fakeCode) Repositories(context.Context, int64) ([]github.Repository, error) {
 	return nil, nil
+}
+
+func (c *fakeCode) SourceURL(fullName, commitSHA string) string {
+	return "https://api.github.test/repos/" + fullName + "/tarball/" + commitSHA
 }
