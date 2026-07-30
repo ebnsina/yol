@@ -34,10 +34,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	hub := server.NewHub()
+	defer hub.CloseAll()
+	streams := server.NewStreams()
+
+	servers := server.NewService(pool, box)
+
 	// Workers are registered before the runner starts, so nothing is picked up that this
 	// process does not know how to do.
 	workers := jobs.NewWorkers()
-	server.RegisterWorkers(workers, server.NewSurveyor(pool, box))
+	server.RegisterWorkers(workers,
+		server.NewSurveyor(servers),
+		server.NewBootstrapper(servers, hub, cfg.AgentDir, cfg.PublicURL.String()),
+	)
 
 	runner, err := jobs.New(pool.Raw(), workers)
 	if err != nil {
@@ -48,6 +57,7 @@ func main() {
 		slog.Error("cannot start background jobs", "error", err)
 		os.Exit(1)
 	}
+	servers.SetEnqueuer(server.NewEnqueuer(runner))
 	defer func() {
 		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
 		defer cancel()
@@ -56,17 +66,12 @@ func main() {
 		}
 	}()
 
-	hub := server.NewHub()
-	defer hub.CloseAll()
-	streams := server.NewStreams()
-
 	handler := api.New(api.Deps{
-		Config:   cfg,
-		DB:       pool,
-		Secrets:  box,
-		Enqueuer: server.NewEnqueuer(runner),
-		Hub:      hub,
-		Streams:  streams,
+		Config:  cfg,
+		DB:      pool,
+		Servers: servers,
+		Hub:     hub,
+		Streams: streams,
 	})
 
 	if err := httpx.Serve(ctx, cfg.HTTPAddr, handler, cfg.ShutdownTimeout); err != nil {

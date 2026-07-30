@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/db/sqlc"
 	"github.com/ebnsina/yol/internal/proto"
 	"github.com/ebnsina/yol/internal/secrets"
@@ -30,19 +29,18 @@ func (SurveyArgs) Kind() string { return "server.survey" }
 
 // Surveyor looks at a server and records what is on it. It changes nothing on the machine.
 type Surveyor struct {
-	pool *db.Pool
-	box  *secrets.Box
+	svc *Service
 }
 
 // NewSurveyor builds the survey worker.
-func NewSurveyor(pool *db.Pool, box *secrets.Box) *Surveyor {
-	return &Surveyor{pool: pool, box: box}
+func NewSurveyor(svc *Service) *Surveyor {
+	return &Surveyor{svc: svc}
 }
 
 // Run performs the survey. Every failure is recorded against the server in words the person
 // waiting can act on, because a five-minute wait ending in silence is the worst outcome.
 func (s *Surveyor) Run(ctx context.Context, args SurveyArgs) error {
-	target, cred, err := s.loadTarget(ctx, args)
+	target, cred, err := s.svc.loadTargetFor(ctx, args)
 	if err != nil {
 		s.fail(ctx, args, "connect", err)
 		return nil // recorded against the server; retrying would not help
@@ -80,8 +78,9 @@ func (s *Surveyor) Run(ctx context.Context, args SurveyArgs) error {
 	return nil
 }
 
-// loadTarget reads the connection details and decrypts the credential.
-func (s *Surveyor) loadTarget(ctx context.Context, args SurveyArgs) (ssh.Target, ssh.Credential, error) {
+// loadTargetFor reads the connection details and decrypts the credential. Shared, because
+// both looking at a server and setting one up need to reach it the same way.
+func (s *Service) loadTargetFor(ctx context.Context, args SurveyArgs) (ssh.Target, ssh.Credential, error) {
 	var target ssh.Target
 	var cred ssh.Credential
 
@@ -116,7 +115,7 @@ func (s *Surveyor) loadTarget(ctx context.Context, args SurveyArgs) (ssh.Target,
 
 // record stores the facts, everything found, and what to do next.
 func (s *Surveyor) record(ctx context.Context, args SurveyArgs, result *proto.SurveyResult) error {
-	return s.pool.InOrg(ctx, args.OrgID, func(tx pgx.Tx) error {
+	return s.svc.pool.InOrg(ctx, args.OrgID, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
 
 		if err := q.UpdateServerFacts(ctx, sqlc.UpdateServerFactsParams{
@@ -381,13 +380,13 @@ func explain(err error) string {
 }
 
 func (s *Surveyor) event(ctx context.Context, args SurveyArgs, step, message, level string) {
-	_ = s.pool.InOrg(ctx, args.OrgID, func(tx pgx.Tx) error {
+	_ = s.svc.pool.InOrg(ctx, args.OrgID, func(tx pgx.Tx) error {
 		return recordEvent(ctx, sqlc.New(tx), args.OrgID, args.ServerID, step, message, level)
 	})
 }
 
 func (s *Surveyor) setStatus(ctx context.Context, args SurveyArgs, status Status, reason *string) {
-	_ = s.pool.InOrg(ctx, args.OrgID, func(tx pgx.Tx) error {
+	_ = s.svc.pool.InOrg(ctx, args.OrgID, func(tx pgx.Tx) error {
 		return sqlc.New(tx).UpdateServerStatus(ctx, sqlc.UpdateServerStatusParams{
 			ID: args.ServerID, Status: sqlc.ServerStatus(status), FailureReason: reason,
 		})

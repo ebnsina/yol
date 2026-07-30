@@ -21,9 +21,20 @@ func (w *surveyWorker) Work(ctx context.Context, job *river.Job[SurveyArgs]) err
 	return w.surveyor.Run(ctx, job.Args)
 }
 
+// bootstrapWorker adapts the bootstrapper to the job runner.
+type bootstrapWorker struct {
+	river.WorkerDefaults[BootstrapArgs]
+	bootstrapper *Bootstrapper
+}
+
+func (w *bootstrapWorker) Work(ctx context.Context, job *river.Job[BootstrapArgs]) error {
+	return w.bootstrapper.Run(ctx, job.Args)
+}
+
 // RegisterWorkers adds this package's workers to the set.
-func RegisterWorkers(workers *jobs.Workers, surveyor *Surveyor) {
+func RegisterWorkers(workers *jobs.Workers, surveyor *Surveyor, bootstrapper *Bootstrapper) {
 	river.AddWorker(workers, &surveyWorker{surveyor: surveyor})
+	river.AddWorker(workers, &bootstrapWorker{bootstrapper: bootstrapper})
 }
 
 // JobEnqueuer starts server jobs. Inserting in the caller's transaction means a job is never
@@ -35,6 +46,18 @@ type JobEnqueuer struct {
 // NewEnqueuer builds the enqueuer.
 func NewEnqueuer(runner *jobs.Runner) *JobEnqueuer {
 	return &JobEnqueuer{runner: runner}
+}
+
+// EnqueueBootstrap queues setting a server up. Someone is waiting on this too.
+func (e *JobEnqueuer) EnqueueBootstrap(ctx context.Context, tx pgx.Tx, serverID, orgID uuid.UUID) error {
+	_, err := e.runner.Client().InsertTx(ctx, tx,
+		BootstrapArgs{ServerID: serverID, OrgID: orgID},
+		&river.InsertOpts{Queue: jobs.QueueInteractive},
+	)
+	if err != nil {
+		return fmt.Errorf("server: queue setup: %w", err)
+	}
+	return nil
 }
 
 // EnqueueSurvey queues a look at a server. Someone is waiting on this, so it goes to the

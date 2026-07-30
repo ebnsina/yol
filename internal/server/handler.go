@@ -35,6 +35,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	route("GET /v1/organizations/{slug}/servers/{id}", h.show)
 	route("DELETE /v1/organizations/{slug}/servers/{id}", h.delete)
 	route("PATCH /v1/organizations/{slug}/servers/{id}/routing", h.chooseRouting)
+	route("POST /v1/organizations/{slug}/servers/{id}/setup", h.setup)
 	route("GET /v1/organizations/{slug}/servers/{id}/events", h.events)
 	route("GET /v1/organizations/{slug}/servers/{id}/resources", h.resources)
 	route("GET /v1/organizations/{slug}/servers/{id}/containers/{container}/logs", h.logs)
@@ -148,6 +149,24 @@ func (h *Handler) chooseRouting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"server": updated})
+}
+
+func (h *Handler) setup(w http.ResponseWriter, r *http.Request) {
+	m, session, ok := h.member(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+
+	updated, err := h.svc.Setup(r.Context(), m, session.User.ID, id)
+	if err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, map[string]any{"server": updated})
 }
 
 // events returns progress since a moment, so a client watching a setup can poll for what is

@@ -21,6 +21,7 @@ import (
 // depend on the job library, and so tests can run without one.
 type Enqueuer interface {
 	EnqueueSurvey(ctx context.Context, tx pgx.Tx, serverID, orgID uuid.UUID) error
+	EnqueueBootstrap(ctx context.Context, tx pgx.Tx, serverID, orgID uuid.UUID) error
 }
 
 // Service owns the server rules.
@@ -31,8 +32,14 @@ type Service struct {
 }
 
 // NewService builds the server service.
-func NewService(pool *db.Pool, box *secrets.Box, enqueuer Enqueuer) *Service {
-	return &Service{pool: pool, box: box, enqueuer: enqueuer}
+func NewService(pool *db.Pool, box *secrets.Box) *Service {
+	return &Service{pool: pool, box: box}
+}
+
+// SetEnqueuer supplies the queue once it exists. The queue's workers are built from this
+// service, so one of the two has to be completed after the other.
+func (s *Service) SetEnqueuer(enqueuer Enqueuer) {
+	s.enqueuer = enqueuer
 }
 
 // Mode is how much we may do to a server.
@@ -276,6 +283,61 @@ func (s *Service) ChooseRouting(ctx context.Context, m *org.Membership, userID, 
 		}
 
 		row.RoutingMode = &mode
+		out = toServer(row, m.Role)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Setup begins installing on a server. This is the first thing that changes a customer's
+// machine, and it happens only when they ask for it after seeing what we found.
+func (s *Service) Setup(ctx context.Context, m *org.Membership, userID, serverID uuid.UUID) (*Server, error) {
+	if err := m.Role.Require(org.CanManageServers); err != nil {
+		return nil, err
+	}
+
+	var out *Server
+	err := s.pool.InOrgAsUser(ctx, m.OrgID, userID, func(tx pgx.Tx) error {
+		q := sqlc.New(tx)
+		row, err := q.GetServer(ctx, serverID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return httpx.NotFound("server").WithCause(err)
+			}
+			return httpx.Internal(err)
+		}
+
+		if row.Mode == sqlc.ServerModeWatch {
+			return httpx.Conflict(
+				"This server is being watched only. Nothing is installed on a watched server.")
+		}
+		if row.Status == sqlc.ServerStatusInstalling {
+			return httpx.Conflict("This server is already being set up.")
+		}
+		if row.Status == sqlc.ServerStatusOnline {
+			return httpx.Conflict("This server is already set up and connected.")
+		}
+		if row.RoutingMode == nil {
+			return httpx.Conflict("Choose how web traffic should reach your apps first.")
+		}
+
+		if err := recordEvent(ctx, q, m.OrgID, serverID, "install",
+			"Setting up this server.", "info"); err != nil {
+			return err
+		}
+		if err := q.UpdateServerStatus(ctx, sqlc.UpdateServerStatusParams{
+			ID: serverID, Status: sqlc.ServerStatusInstalling,
+		}); err != nil {
+			return httpx.Internal(err)
+		}
+		if err := s.enqueuer.EnqueueBootstrap(ctx, tx, serverID, m.OrgID); err != nil {
+			return httpx.Internal(err)
+		}
+
+		row.Status = sqlc.ServerStatusInstalling
 		out = toServer(row, m.Role)
 		return nil
 	})

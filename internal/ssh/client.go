@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -197,4 +198,50 @@ func firstWord(command string) string {
 		return before
 	}
 	return command
+}
+
+// Upload writes a file on the server, streaming it over the existing connection rather than
+// asking the machine to fetch it from anywhere. Used for the agent binary, which is several
+// megabytes.
+func (c *Client) Upload(ctx context.Context, path string, mode string, size int64, content io.Reader) error {
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("ssh: open session: %w", err)
+	}
+	defer session.Close()
+
+	session.Stdin = content
+	var stderr strings.Builder
+	session.Stderr = &stderr
+
+	// Written to a temporary name and moved into place, so a half-copied file is never left
+	// somewhere that something might run it.
+	temp := path + ".partial"
+	command := fmt.Sprintf("cat > %q && chmod %s %q && mv -f %q %q", temp, mode, temp, temp, path)
+
+	done := make(chan error, 1)
+	go func() { done <- session.Run(command) }()
+
+	// Generous, because this is a large file over whatever connection the customer has.
+	timeout := time.NewTimer(10 * time.Minute)
+	defer timeout.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("ssh: write %s: %w: %s", path, err, strings.TrimSpace(stderr.String()))
+		}
+		return nil
+	case <-ctx.Done():
+		_ = session.Signal(ssh.SIGKILL)
+		return ctx.Err()
+	case <-timeout.C:
+		_ = session.Signal(ssh.SIGKILL)
+		return fmt.Errorf("ssh: writing %s took too long", path)
+	}
+}
+
+// WriteText writes a small file, such as a configuration or a token.
+func (c *Client) WriteText(ctx context.Context, path, mode, contents string) error {
+	return c.Upload(ctx, path, mode, int64(len(contents)), strings.NewReader(contents))
 }

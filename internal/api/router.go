@@ -9,18 +9,16 @@ import (
 	"github.com/ebnsina/yol/internal/db"
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/org"
-	"github.com/ebnsina/yol/internal/secrets"
 	"github.com/ebnsina/yol/internal/server"
 )
 
 // Deps holds everything the routes need. Fields are added as domains land.
 type Deps struct {
-	Config   *config.API
-	DB       *db.Pool
-	Secrets  *secrets.Box
-	Enqueuer server.Enqueuer
-	Hub      *server.Hub
-	Streams  *server.Streams
+	Config  *config.API
+	DB      *db.Pool
+	Servers *server.Service
+	Hub     *server.Hub
+	Streams *server.Streams
 }
 
 // New builds the API handler with logging, panic recovery, and the error envelope.
@@ -37,11 +35,10 @@ func New(d Deps) http.Handler {
 	orgSvc := org.NewService(d.DB)
 	org.NewHandler(orgSvc, d.Config, authHandler.Required, authHandler.Optional).Routes(mux)
 
-	serverSvc := server.NewService(d.DB, d.Secrets, d.Enqueuer)
-	server.NewHandler(serverSvc, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
+	server.NewHandler(d.Servers, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
 
 	// Agents authenticate with their own credential rather than a person's session.
-	server.NewAgentHandler(serverSvc, d.Hub, d.Streams).Routes(mux)
+	server.NewAgentHandler(d.Servers, d.Hub, d.Streams).Routes(mux)
 
 	return httpx.Chain(mux,
 		httpx.WithRequestID,

@@ -51,6 +51,15 @@ volume. `make test-live` then checks that a survey reports all of it, blames the
 container for the port conflict, treats none of it as ours, and — most importantly — changes
 nothing at all, verified by comparing the machine before and after.
 
+## The control plane's address
+
+`YOL_PUBLIC_URL` is written into the agent's service file during setup, so it has to be an
+address the **server** can reach, not the address the control plane happens to listen on.
+Locally that means `http://host.docker.internal:8080`, because `localhost` inside a stand-in
+server is the stand-in server itself. Getting this wrong produces an agent that installs
+correctly and then never connects, which setup now reports rather than leaving a server
+apparently installing forever.
+
 ## Notes
 
 These containers are `privileged` with the host cgroup namespace, which systemd and Docker

@@ -20,6 +20,7 @@ type API struct {
 	WebOrigin       *url.URL
 	CookieDomain    string
 	DatabaseURL     string
+	AgentDir        string
 	SessionSecret   []byte
 	SecretsKey      []byte
 	AgentSpecKey    []byte
@@ -57,6 +58,7 @@ func LoadAPI() (*API, error) {
 		WebOrigin:       l.url("YOL_WEB_ORIGIN"),
 		CookieDomain:    l.str("YOL_COOKIE_DOMAIN"),
 		DatabaseURL:     l.str("YOL_DATABASE_URL"),
+		AgentDir:        l.str("YOL_AGENT_DIR"),
 		SessionSecret:   l.key("YOL_SESSION_SECRET", 32),
 		SecretsKey:      l.key("YOL_SECRETS_KEY", 32),
 		AgentSpecKey:    l.key("YOL_AGENT_SPEC_KEY", 32),

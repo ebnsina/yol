@@ -125,6 +125,15 @@ All notable changes to this project are recorded here, newest first. Format foll
   apart, and nothing is stored: watching costs only the connection it travels over.
 - One reader falling behind never stalls another, and a chatty container is batched rather than
   producing a message per line.
+- Setting a server up now happens by itself: Docker is installed if it is missing, the agent is
+  copied over the connection already open, and it is set to start on boot and be restarted if
+  it stops. Each step is reported as it happens.
+- Docker already present is left exactly as it is, so a server already running containers does
+  not have its engine touched.
+- Installing waits for the agent to appear, and says what to check if it does not, rather than
+  leaving a server apparently being set up forever.
+- Nothing is installed until the server has been looked at and setup explicitly asked for, so
+  connecting a server and changing it stay separate decisions.
 
 ### Security
 
