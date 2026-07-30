@@ -26,6 +26,13 @@ type API struct {
 	AgentSpecKey    []byte
 	SessionTTL      time.Duration
 	ShutdownTimeout time.Duration
+
+	// How code is reached. Without these a project has nothing to deploy, so they are required
+	// like everything else rather than quietly disabling deploys.
+	GitHubAppID         string
+	GitHubAppSlug       string
+	GitHubPrivateKey    []byte
+	GitHubWebhookSecret string
 }
 
 // Agent is the managed-server binary configuration. Every field is required.
@@ -64,6 +71,11 @@ func LoadAPI() (*API, error) {
 		AgentSpecKey:    l.key("YOL_AGENT_SPEC_KEY", 32),
 		SessionTTL:      l.duration("YOL_SESSION_TTL"),
 		ShutdownTimeout: l.duration("YOL_SHUTDOWN_TIMEOUT"),
+
+		GitHubAppID:         l.str("YOL_GITHUB_APP_ID"),
+		GitHubAppSlug:       l.str("YOL_GITHUB_APP_SLUG"),
+		GitHubPrivateKey:    l.pem("YOL_GITHUB_PRIVATE_KEY"),
+		GitHubWebhookSecret: l.str("YOL_GITHUB_WEBHOOK_SECRET"),
 	}
 	return cfg, l.err()
 }
@@ -216,6 +228,22 @@ func (l *loader) key(name string, wantBytes int) []byte {
 		return nil
 	}
 	return b
+}
+
+// pem reads a private key, accepting it either as it comes out of the file or with the newlines
+// replaced by the literal characters, which is how it survives being pasted into most secret
+// stores. Only the shape is checked here; whether it is a usable key is decided when it is parsed.
+func (l *loader) pem(name string) []byte {
+	v, ok := l.raw(name)
+	if !ok {
+		return nil
+	}
+	v = strings.ReplaceAll(v, `\n`, "\n")
+	if !strings.Contains(v, "-----BEGIN") {
+		l.reject(name, "must be a private key in PEM form")
+		return nil
+	}
+	return []byte(v)
 }
 
 // Port extracts the numeric port from an address, for logging and health checks.

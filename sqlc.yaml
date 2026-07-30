@@ -7,6 +7,7 @@ sql:
       - internal/db/migrations/00005_servers.sql
       - internal/db/migrations/00007_agent_enrollment.sql
       - internal/db/migrations/00008_projects.sql
+      - internal/db/migrations/00009_github.sql
     queries: internal/db/queries
     engine: postgresql
     gen:

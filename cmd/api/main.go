@@ -10,6 +10,7 @@ import (
 	"github.com/ebnsina/yol/internal/api"
 	"github.com/ebnsina/yol/internal/config"
 	"github.com/ebnsina/yol/internal/db"
+	"github.com/ebnsina/yol/internal/github"
 	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/jobs"
 	"github.com/ebnsina/yol/internal/proto"
@@ -33,6 +34,14 @@ func main() {
 	box, err := secrets.New(cfg.SecretsKey)
 	if err != nil {
 		slog.Error("cannot set up encryption", "error", err)
+		os.Exit(1)
+	}
+
+	// Where code comes from. Parsed now so a bad key stops the process here rather than at the
+	// first deploy somebody attempts.
+	code, err := github.NewApp(cfg.GitHubAppID, cfg.GitHubAppSlug, cfg.GitHubPrivateKey)
+	if err != nil {
+		slog.Error("cannot set up access to repositories", "error", err)
 		os.Exit(1)
 	}
 
@@ -82,6 +91,7 @@ func main() {
 		DB:      pool,
 		Servers: servers,
 		Secrets: box,
+		Code:    code,
 		Hub:     hub,
 		Streams: streams,
 		Signer:  signer,

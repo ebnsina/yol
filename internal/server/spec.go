@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/ebnsina/yol/internal/db/sqlc"
+	"github.com/ebnsina/yol/internal/httpx"
 	"github.com/ebnsina/yol/internal/proto"
+	"github.com/ebnsina/yol/internal/secrets"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -65,7 +67,16 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 				continue // built nothing yet, so there is nothing to run
 			}
 			live[placement.ServiceID] = placement
-			spec.Containers = append(spec.Containers, containerFor(placement, identity.OrgID))
+
+			// What the app runs with. Read here rather than kept anywhere in the open: they are
+			// decrypted only to be handed to the machine that runs the app.
+			variables, err := s.variablesFor(ctx, q, placement.EnvironmentID)
+			if err != nil {
+				return err
+			}
+			container := containerFor(placement, identity.OrgID)
+			container.Env = variables
+			spec.Containers = append(spec.Containers, container)
 		}
 
 		if router := routerFor(row, identity.OrgID); router != nil {
@@ -127,6 +138,29 @@ func (s *Service) SpecFor(ctx context.Context, identity AgentIdentity) (*proto.S
 		return nil, err
 	}
 	return spec, nil
+}
+
+// variablesFor reads what an app runs with. A value that cannot be decrypted fails the whole
+// specification rather than being left out, because an app started without one of its variables
+// fails in ways that are far harder to understand than a specification that did not arrive.
+func (s *Service) variablesFor(ctx context.Context, q *sqlc.Queries, envID uuid.UUID) (map[string]string, error) {
+	rows, err := q.ListEnvVars(ctx, envID)
+	if err != nil {
+		return nil, httpx.Internal(err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		value, err := s.box.OpenString(row.Value, secrets.ContextEnvVar)
+		if err != nil {
+			return nil, httpx.Internal(err)
+		}
+		out[row.Name] = value
+	}
+	return out, nil
 }
 
 // containerFor describes what one service should be running, taken from its live deployment.

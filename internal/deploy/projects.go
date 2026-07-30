@@ -36,7 +36,18 @@ const (
 type Projects struct {
 	pool    *db.Pool
 	secrets *secrets.Box
+	// Where code comes from and how servers are reached. Set after construction, so this package
+	// needs no knowledge of either in order to be exercised without them.
+	code   Code
+	agents Agents
+
+	// What GitHub signs deliveries with.
+	webhookSecret string
 }
+
+// errNoCode means nothing was wired up to reach repositories with, which is a mistake in how the
+// process was assembled rather than anything a user did.
+var errNoCode = errors.New("deploy: no source of code is configured")
 
 // NewProjects builds the service.
 func NewProjects(pool *db.Pool, box *secrets.Box) *Projects {

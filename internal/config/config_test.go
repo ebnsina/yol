@@ -21,6 +21,11 @@ func validAPIEnv() map[string]string {
 		"YOL_AGENT_DIR":        "./bin",
 		"YOL_SESSION_TTL":      "720h",
 		"YOL_SHUTDOWN_TIMEOUT": "15s",
+
+		"YOL_GITHUB_APP_ID":         "123456",
+		"YOL_GITHUB_APP_SLUG":       "yol",
+		"YOL_GITHUB_PRIVATE_KEY":    "-----BEGIN RSA PRIVATE KEY-----\nnot-a-real-key\n-----END RSA PRIVATE KEY-----",
+		"YOL_GITHUB_WEBHOOK_SECRET": "a-shared-secret",
 	}
 }
 
@@ -28,6 +33,33 @@ func setEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	for k, v := range env {
 		t.Setenv(k, v)
+	}
+}
+
+// A key pasted into a secret store usually arrives with the newlines turned into two characters,
+// and refusing that would look like a broken key rather than a paste that needs fixing.
+func TestAPrivateKeyPastedWithEscapedNewlinesIsAccepted(t *testing.T) {
+	env := validAPIEnv()
+	env["YOL_GITHUB_PRIVATE_KEY"] = `-----BEGIN RSA PRIVATE KEY-----\nsomething\n-----END RSA PRIVATE KEY-----`
+	setEnv(t, env)
+
+	cfg, err := LoadAPI()
+	if err != nil {
+		t.Fatalf("expected valid config, got: %v", err)
+	}
+	if !strings.Contains(string(cfg.GitHubPrivateKey), "\n") {
+		t.Error("the key was left with escaped newlines, so it will not parse")
+	}
+}
+
+// Something that is not a key at all is a misconfiguration worth catching at startup.
+func TestSomethingThatIsNotAPrivateKeyIsRefused(t *testing.T) {
+	env := validAPIEnv()
+	env["YOL_GITHUB_PRIVATE_KEY"] = "just-a-string"
+	setEnv(t, env)
+
+	if _, err := LoadAPI(); err == nil {
+		t.Error("something that is not a key was accepted")
 	}
 }
 

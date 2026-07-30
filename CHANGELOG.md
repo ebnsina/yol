@@ -164,6 +164,14 @@ All notable changes to this project are recorded here, newest first. Format foll
   published to the machine to be served on the web.
 - Certificates are obtained as hostnames arrive rather than being listed in advance, which is what
   lets a custom domain start working without reconfiguring anything.
+- Code comes from GitHub. Access is granted by installing an application, which is confirmed with
+  GitHub rather than taken from whatever the browser came back with, and a project is pointed at one
+  of the repositories that installation covers.
+- A push deploys. The branch an environment follows decides which one, so pushing to the production
+  branch deploys production and pushing to the staging branch deploys staging. A push to a branch
+  nothing follows does nothing at all.
+- Access being taken away on GitHub is recorded when it happens, so a project can say why it stopped
+  deploying rather than failing on the next push with nothing to explain it.
 - Projects, with a production and a staging environment created alongside each one. Wanting
   somewhere to try a change before it reaches the public is the normal case, and adding the second
   later would mean copying settings across by hand. Each environment follows its own branch and is
@@ -197,6 +205,12 @@ All notable changes to this project are recorded here, newest first. Format foll
 
 ### Security
 
+- A webhook is only acted on once it carries a signature made with the secret only GitHub and we
+  hold, compared in constant time. Nothing is said about why one was refused: an address anybody can
+  post to should not help somebody work out what a valid delivery looks like.
+- The credential that reads a repository is minted per deploy, lasts an hour, and is narrowed to
+  reading contents and metadata, so one that leaks from a build cannot write to anybody's
+  repository. It is never stored.
 - A build request is signed like a specification is, because it hands over a credential for the
   repository and causes code to run. An unsigned one is refused, so reaching the connection is not
   enough to start a build on somebody's server.

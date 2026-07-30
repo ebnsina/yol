@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ebnsina/yol/internal/db/sqlc"
+	"github.com/ebnsina/yol/internal/deploy"
 	"github.com/google/uuid"
 )
 
@@ -15,7 +16,7 @@ func livePlacement(kind sqlc.ServiceKind, port int32) sqlc.ListLivePlacementsFor
 	return sqlc.ListLivePlacementsForServerRow{
 		ServiceID:     serviceID,
 		DeploymentID:  deploymentID,
-		ContainerName: ContainerNameFor(serviceID, deploymentID),
+		ContainerName: deploy.ContainerNameFor(serviceID, deploymentID),
 		ImageRef:      &image,
 		Kind:          kind,
 		HealthPort:    &port,
@@ -97,8 +98,8 @@ func TestAnAppWithNoPortGivenUsesTheUsualOne(t *testing.T) {
 func TestTwoDeploymentsOfOneServiceGetDifferentContainers(t *testing.T) {
 	serviceID := uuid.New()
 
-	first := ContainerNameFor(serviceID, uuid.New())
-	second := ContainerNameFor(serviceID, uuid.New())
+	first := deploy.ContainerNameFor(serviceID, uuid.New())
+	second := deploy.ContainerNameFor(serviceID, uuid.New())
 
 	if first == second {
 		t.Errorf("both deployments are named %s, so one would replace the other", first)
@@ -110,7 +111,7 @@ func TestTwoDeploymentsOfOneServiceGetDifferentContainers(t *testing.T) {
 func TestAContainerIsNamedTheSameWayEveryTime(t *testing.T) {
 	serviceID, deploymentID := uuid.New(), uuid.New()
 
-	if ContainerNameFor(serviceID, deploymentID) != ContainerNameFor(serviceID, deploymentID) {
+	if deploy.ContainerNameFor(serviceID, deploymentID) != deploy.ContainerNameFor(serviceID, deploymentID) {
 		t.Error("the same deployment produced two different container names")
 	}
 }

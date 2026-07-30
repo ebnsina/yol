@@ -18,13 +18,17 @@ import (
 // Deployments keeps what happened while deploying. The building and the rollout both happen on the
 // customer's own machine; this only records what came back.
 type Deployments struct {
-	pool *db.Pool
+	pool   *db.Pool
+	agents Agents
 }
 
 // NewDeployments builds the recorder.
 func NewDeployments(pool *db.Pool) *Deployments {
 	return &Deployments{pool: pool}
 }
+
+// SetAgents gives the recorder a way to set a rollout going once an image exists.
+func (d *Deployments) SetAgents(agents Agents) { d.agents = agents }
 
 // RecordBuildOutput stores a batch of output. Failures are logged and dropped rather than
 // returned: losing a line of output must never be what fails a deploy.
@@ -62,6 +66,7 @@ func (d *Deployments) FinishBuild(ctx context.Context, orgID uuid.UUID, result p
 		return
 	}
 
+	var servers []uuid.UUID
 	err = d.pool.InOrg(ctx, orgID, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
 
@@ -85,13 +90,37 @@ func (d *Deployments) FinishBuild(ctx context.Context, orgID uuid.UUID, result p
 		}); err != nil {
 			return err
 		}
-		return q.SetDeploymentStatus(ctx, sqlc.SetDeploymentStatusParams{
+		if err := q.SetDeploymentStatus(ctx, sqlc.SetDeploymentStatusParams{
 			ID:     deploymentID,
 			Status: sqlc.DeploymentStatusDeploying,
-		})
+		}); err != nil {
+			return err
+		}
+
+		placements, err := q.ListPlacements(ctx, deploymentID)
+		if err != nil {
+			return err
+		}
+		for _, placement := range placements {
+			servers = append(servers, placement.ServerID)
+		}
+		return nil
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		slog.Error("could not record how a build ended", "deployment", deploymentID, "error", err)
+		return
+	}
+
+	// The image exists, so the server is handed its desired state again and the rollout follows
+	// from that rather than from a second instruction. A server that is not reachable picks the
+	// change up on its next pass, which is the same path a reboot takes.
+	if d.agents == nil {
+		return
+	}
+	for _, serverID := range servers {
+		if err := d.agents.Reconcile(ctx, serverID); err != nil {
+			slog.Warn("could not set a rollout going", "server", serverID, "error", err)
+		}
 	}
 }
 

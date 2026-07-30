@@ -21,6 +21,7 @@ type Deps struct {
 	DB      *db.Pool
 	Servers *server.Service
 	Secrets *secrets.Box
+	Code    deploy.Code
 	Hub     *server.Hub
 	Streams *server.Streams
 	Signer  *proto.SigningKey
@@ -42,11 +43,24 @@ func New(d Deps) http.Handler {
 
 	server.NewHandler(d.Servers, orgSvc, d.Hub, d.Streams, authHandler.Required).Routes(mux)
 
+	// The parts that reach outward are handed in rather than built here, so this stays a wiring
+	// list: where code comes from, and how a server is reached.
+	dispatcher := server.NewDispatcher(d.Servers, d.Hub, d.Signer)
+
 	projects := deploy.NewProjects(d.DB, d.Secrets)
-	deploy.NewHandler(projects, orgSvc, authHandler.Required).Routes(mux)
+	projects.SetCode(d.Code)
+	projects.SetAgents(dispatcher)
+	projects.SetWebhookSecret(d.Config.GitHubWebhookSecret)
+
+	projectHandler := deploy.NewHandler(projects, orgSvc, authHandler.Required)
+	projectHandler.Routes(mux)
+	projectHandler.GitHubRoutes(mux)
+
+	deployments := deploy.NewDeployments(d.DB)
+	deployments.SetAgents(dispatcher)
 
 	// Agents authenticate with their own credential rather than a person's session.
-	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer, deploy.NewDeployments(d.DB)).Routes(mux)
+	server.NewAgentHandler(d.Servers, d.Hub, d.Streams, d.Signer, deployments).Routes(mux)
 
 	// Asked by the routers on customer servers, so it carries no session.
 	deploy.NewTLSHandler(d.DB).Routes(mux)

@@ -50,6 +50,43 @@ func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentPa
 	return i, err
 }
 
+const createInstallation = `-- name: CreateInstallation :one
+INSERT INTO github_installations (id, org_id, external_id, account, connected_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (external_id) DO UPDATE
+SET account = EXCLUDED.account, revoked_at = NULL
+RETURNING id, org_id, external_id, account, connected_by, created_at, revoked_at
+`
+
+type CreateInstallationParams struct {
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	ExternalID  string
+	Account     string
+	ConnectedBy *uuid.UUID
+}
+
+func (q *Queries) CreateInstallation(ctx context.Context, arg CreateInstallationParams) (GithubInstallation, error) {
+	row := q.db.QueryRow(ctx, createInstallation,
+		arg.ID,
+		arg.OrgID,
+		arg.ExternalID,
+		arg.Account,
+		arg.ConnectedBy,
+	)
+	var i GithubInstallation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ExternalID,
+		&i.Account,
+		&i.ConnectedBy,
+		&i.CreatedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (id, org_id, name, slug, repo_provider, repo_full_name, repo_external_id, repo_installation_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -138,6 +175,20 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 	return i, err
 }
 
+const deleteInstallation = `-- name: DeleteInstallation :exec
+DELETE FROM github_installations WHERE org_id = $1 AND external_id = $2
+`
+
+type DeleteInstallationParams struct {
+	OrgID      uuid.UUID
+	ExternalID string
+}
+
+func (q *Queries) DeleteInstallation(ctx context.Context, arg DeleteInstallationParams) error {
+	_, err := q.db.Exec(ctx, deleteInstallation, arg.OrgID, arg.ExternalID)
+	return err
+}
+
 const deleteProject = `-- name: DeleteProject :exec
 DELETE FROM projects WHERE id = $1 AND org_id = $2
 `
@@ -223,6 +274,30 @@ func (q *Queries) GetEnvironment(ctx context.Context, id uuid.UUID) (Environment
 		&i.Branch,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getInstallation = `-- name: GetInstallation :one
+SELECT id, org_id, external_id, account, connected_by, created_at, revoked_at FROM github_installations WHERE org_id = $1 AND external_id = $2 AND revoked_at IS NULL
+`
+
+type GetInstallationParams struct {
+	OrgID      uuid.UUID
+	ExternalID string
+}
+
+func (q *Queries) GetInstallation(ctx context.Context, arg GetInstallationParams) (GithubInstallation, error) {
+	row := q.db.QueryRow(ctx, getInstallation, arg.OrgID, arg.ExternalID)
+	var i GithubInstallation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ExternalID,
+		&i.Account,
+		&i.ConnectedBy,
+		&i.CreatedAt,
+		&i.RevokedAt,
 	)
 	return i, err
 }
@@ -320,6 +395,40 @@ func (q *Queries) ListEnvironments(ctx context.Context, projectID uuid.UUID) ([]
 			&i.Branch,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInstallations = `-- name: ListInstallations :many
+SELECT id, org_id, external_id, account, connected_by, created_at, revoked_at FROM github_installations
+WHERE org_id = $1 AND revoked_at IS NULL
+ORDER BY account
+`
+
+func (q *Queries) ListInstallations(ctx context.Context, orgID uuid.UUID) ([]GithubInstallation, error) {
+	rows, err := q.db.Query(ctx, listInstallations, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GithubInstallation
+	for rows.Next() {
+		var i GithubInstallation
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ExternalID,
+			&i.Account,
+			&i.ConnectedBy,
+			&i.CreatedAt,
+			&i.RevokedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -461,6 +570,15 @@ func (q *Queries) ListServicesForServer(ctx context.Context, serverID *uuid.UUID
 	return items, nil
 }
 
+const revokeInstallation = `-- name: RevokeInstallation :exec
+SELECT revoke_installation($1)
+`
+
+func (q *Queries) RevokeInstallation(ctx context.Context, pExternalID string) error {
+	_, err := q.db.Exec(ctx, revokeInstallation, pExternalID)
+	return err
+}
+
 const setEnvironmentBranch = `-- name: SetEnvironmentBranch :exec
 UPDATE environments SET branch = $2, updated_at = now() WHERE id = $1
 `
@@ -487,6 +605,46 @@ type SetEnvironmentServerParams struct {
 func (q *Queries) SetEnvironmentServer(ctx context.Context, arg SetEnvironmentServerParams) error {
 	_, err := q.db.Exec(ctx, setEnvironmentServer, arg.ID, arg.ServerID)
 	return err
+}
+
+const setProjectRepository = `-- name: SetProjectRepository :one
+UPDATE projects
+SET repo_provider = $2, repo_full_name = $3, repo_external_id = $4, repo_installation_id = $5,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, org_id, name, slug, repo_provider, repo_full_name, repo_external_id, repo_installation_id, created_at, updated_at
+`
+
+type SetProjectRepositoryParams struct {
+	ID                 uuid.UUID
+	RepoProvider       *string
+	RepoFullName       *string
+	RepoExternalID     *string
+	RepoInstallationID *string
+}
+
+func (q *Queries) SetProjectRepository(ctx context.Context, arg SetProjectRepositoryParams) (Project, error) {
+	row := q.db.QueryRow(ctx, setProjectRepository,
+		arg.ID,
+		arg.RepoProvider,
+		arg.RepoFullName,
+		arg.RepoExternalID,
+		arg.RepoInstallationID,
+	)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Slug,
+		&i.RepoProvider,
+		&i.RepoFullName,
+		&i.RepoExternalID,
+		&i.RepoInstallationID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateService = `-- name: UpdateService :one

@@ -415,6 +415,16 @@ type Environment struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type GithubInstallation struct {
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	ExternalID  string
+	Account     string
+	ConnectedBy *uuid.UUID
+	CreatedAt   pgtype.Timestamptz
+	RevokedAt   pgtype.Timestamptz
+}
+
 type Invitation struct {
 	ID          uuid.UUID
 	OrgID       uuid.UUID

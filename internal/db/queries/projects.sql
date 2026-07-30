@@ -66,3 +66,31 @@ RETURNING *;
 
 -- name: DeleteService :exec
 DELETE FROM services WHERE id = $1 AND org_id = $2;
+
+-- name: CreateInstallation :one
+INSERT INTO github_installations (id, org_id, external_id, account, connected_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (external_id) DO UPDATE
+SET account = EXCLUDED.account, revoked_at = NULL
+RETURNING *;
+
+-- name: ListInstallations :many
+SELECT * FROM github_installations
+WHERE org_id = $1 AND revoked_at IS NULL
+ORDER BY account;
+
+-- name: GetInstallation :one
+SELECT * FROM github_installations WHERE org_id = $1 AND external_id = $2 AND revoked_at IS NULL;
+
+-- name: DeleteInstallation :exec
+DELETE FROM github_installations WHERE org_id = $1 AND external_id = $2;
+
+-- name: SetProjectRepository :one
+UPDATE projects
+SET repo_provider = $2, repo_full_name = $3, repo_external_id = $4, repo_installation_id = $5,
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: RevokeInstallation :exec
+SELECT revoke_installation($1);
