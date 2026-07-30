@@ -115,11 +115,11 @@ func writeArchive(w http.ResponseWriter, sha string) error {
 		answer = "version-two"
 	}
 
-	dockerfile := `FROM alpine:3.20
-RUN mkdir -p /site
-COPY index.html /site/index.html
-EXPOSE 3000
-CMD ["httpd", "-f", "-p", "3000", "-h", "/site"]
+	// A web server that is already on the harness and needs no arguments. Alpine's busybox leaves
+	// the httpd applet out, which is the sort of thing only a real build finds out.
+	dockerfile := `FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/index.html
+EXPOSE 80
 `
 
 	gz := gzip.NewWriter(w)

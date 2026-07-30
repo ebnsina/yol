@@ -170,8 +170,13 @@ for _ in $(seq 60); do
 	sleep 0.5
 done
 curl -sf "$API/ready" >/dev/null 2>&1 || { echo "the API never became ready"; tail -20 "$LOG"; exit 1; }
-kill -0 "$github_pid" 2>/dev/null ||
-	{ echo "the stand-in for GitHub did not start"; tail -10 "$GITHUB_LOG"; exit 1; }
+# Compiling takes a moment, exactly as it does for the API above.
+for _ in $(seq 60); do
+	curl -sf "$GITHUB/installation/repositories" >/dev/null 2>&1 && break
+	kill -0 "$github_pid" 2>/dev/null ||
+		{ echo "the stand-in for GitHub stopped"; tail -10 "$GITHUB_LOG"; exit 1; }
+	sleep 0.5
+done
 curl -sf "$GITHUB/installation/repositories" >/dev/null 2>&1 ||
 	{ echo "the stand-in for GitHub never became ready at $GITHUB"; tail -10 "$GITHUB_LOG"; exit 1; }
 ssh "${SSH_OPTS[@]}" -p "$VPS_SSH_PORT" root@localhost \
@@ -217,7 +222,7 @@ api PUT "/v1/organizations/$SLUG/projects/$PROJECT/repository" \
 
 # What the app answers on, so the rollout has something to wait for.
 api PATCH "/v1/organizations/$SLUG/projects/$PROJECT/services/$SERVICE" \
-	'{"healthPath":"/","healthPort":3000}' >/dev/null
+	'{"healthPath":"/","healthPort":80}' >/dev/null
 
 repo=$(api GET "/v1/organizations/$SLUG/projects/$PROJECT" | field project.repository.fullName)
 [[ "$repo" == "harness/shop" ]] &&
@@ -336,7 +341,7 @@ answer=$(curl -sS --max-time 5 "$VPS_HTTP/" 2>/dev/null)
 echo
 echo "==> going back to a previous version needs no build"
 api PATCH "/v1/organizations/$SLUG/projects/$PROJECT/services/$SERVICE" \
-	'{"healthPath":"/","healthPort":3000}' >/dev/null
+	'{"healthPath":"/","healthPort":80}' >/dev/null
 
 images_before=$(ssh "${SSH_OPTS[@]}" -p "$VPS_SSH_PORT" root@localhost \
 	'docker images --format "{{.ID}}" | sort -u | wc -l' 2>/dev/null | tr -d ' ')
